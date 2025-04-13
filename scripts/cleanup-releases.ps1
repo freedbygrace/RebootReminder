@@ -15,20 +15,34 @@ if (-not (Test-Path $releaseDir)) {
 # Get all zip files in the release-packages directory
 $zipFiles = Get-ChildItem -Path $releaseDir -Filter "*.zip" | Sort-Object LastWriteTime -Descending
 
+# Always preserve these files (they will be overwritten with each release)
+$preserveFiles = @(
+    "reboot_reminder.exe",
+    "config.sample.json",
+    "config.sample.xml"
+)
+
 # If there are more than one zip files, delete all but the most recent
 if ($zipFiles.Count -gt 1) {
     Write-Host "Found $($zipFiles.Count) zip files. Keeping only the most recent one." -ForegroundColor Yellow
-    
+
     # Keep track of the most recent file
     $latestFile = $zipFiles[0]
     Write-Host "Keeping latest file: $($latestFile.Name)" -ForegroundColor Green
-    
-    # Delete all other files
+
+    # Delete all other zip files
     for ($i = 1; $i -lt $zipFiles.Count; $i++) {
         Write-Host "Deleting old file: $($zipFiles[$i].Name)" -ForegroundColor Red
         Remove-Item $zipFiles[$i].FullName -Force
     }
-    
+
+    # Delete any other files that are not in the preserve list
+    $otherFiles = Get-ChildItem -Path $releaseDir -File | Where-Object { $_.Name -notin $preserveFiles -and $_.Name -ne $latestFile.Name }
+    foreach ($file in $otherFiles) {
+        Write-Host "Deleting old file: $($file.Name)" -ForegroundColor Red
+        Remove-Item $file.FullName -Force
+    }
+
     Write-Host "Cleanup complete. Only the latest zip file remains." -ForegroundColor Green
 } else {
     Write-Host "Only one or no zip files found. No cleanup needed." -ForegroundColor Green
