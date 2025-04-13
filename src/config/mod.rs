@@ -18,17 +18,19 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Config> {
     let path = path.as_ref();
     debug!("Loading configuration from {:?}", path);
 
-    let content = if is_url(path.to_string_lossy().as_ref()) {
-        // Load from URL
-        let url = path.to_string_lossy();
-        info!("Loading configuration from URL: {}", url);
+    // Convert path to string for analysis
+    let path_str = path.to_string_lossy();
+
+    let content = if is_url(&path_str) {
+        // Load from URL (http/https only)
+        info!("Loading configuration from URL: {}", path_str);
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .context("Failed to create HTTP client")?;
 
         let response = client
-            .get(url.as_ref())
+            .get(path_str.as_ref())
             .send()
             .context("Failed to fetch configuration from URL")?;
 
@@ -41,9 +43,21 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Config> {
 
         response.text().context("Failed to read configuration from URL")?
     } else {
-        // Load from file
-        info!("Loading configuration from file: {:?}", path);
-        fs::read_to_string(path).context("Failed to read configuration file")?
+        // Handle UNC paths and local paths
+        let path_to_use = if path_str.starts_with("\\\\") {
+            // UNC path
+            info!("Loading configuration from UNC path: {}", path_str);
+            path
+        } else if path_str.contains(':') && !path.is_absolute() {
+            // Might be a file:// URL or similar that we don't support
+            return Err(anyhow::anyhow!("Unsupported URL scheme in path: {}", path_str));
+        } else {
+            // Regular local path
+            info!("Loading configuration from local file: {:?}", path);
+            path
+        };
+
+        fs::read_to_string(path_to_use).context("Failed to read configuration file")?
     };
 
     // Determine format based on file extension or content
@@ -363,7 +377,12 @@ fn validate_config(config: &Config) -> Result<()> {
 
 /// Check if a string is a URL
 fn is_url(s: &str) -> bool {
-    Url::parse(s).is_ok()
+    // Only consider http and https URLs as valid for remote configuration
+    if let Ok(url) = Url::parse(s) {
+        matches!(url.scheme(), "http" | "https")
+    } else {
+        false
+    }
 }
 
 /// Expand environment variables in configuration paths
@@ -448,6 +467,102 @@ fn is_valid_duration_format(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test_is_url() {
+        // Valid URLs
+        assert!(is_url("http://example.com/config.json"));
+        assert!(is_url("https://example.com/config.json"));
+
+        // Invalid or unsupported URLs
+        assert!(!is_url("file:///C:/config.json"));
+        assert!(!is_url("ftp://example.com/config.json"));
+        assert!(!is_url("C:\\Program Files\\config.json"));
+        assert!(!is_url("\\\\server\\share\\config.json"));
+        assert!(!is_url("config.json"));
+    }
+
+    #[test]
+    fn test_load_local_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("config.json");
+
+        // Create a simple config file
+        let config_content = r#"{
+            "service": {
+                "name": "TestService",
+                "displayName": "Test Service",
+                "description": "Test Description",
+                "configRefreshMinutes": 60
+            },
+            "notification": {
+                "type": "both",
+                "branding": {
+                    "title": "Test Title",
+                    "iconPath": "icon.ico",
+                    "company": "Test Company"
+                },
+                "messages": {
+                    "initialTitle": "Reboot Required",
+                    "initialMessage": "A system reboot is required.",
+                    "reminderTitle": "Reboot Still Required",
+                    "reminderMessage": "A system reboot is still required.",
+                    "urgentTitle": "Urgent: Reboot Required",
+                    "urgentMessage": "A system reboot is urgently required."
+                },
+                "quietHours": {
+                    "enabled": false,
+                    "start": "22:00",
+                    "end": "08:00"
+                }
+            },
+            "reboot": {
+                "timeframes": [],
+                "detectionMethods": {
+                    "windowsUpdate": true,
+                    "sccm": true,
+                    "registry": true,
+                    "pendingFileOperations": true
+                },
+                "systemReboot": {
+                    "enabled": true,
+                    "countdownSeconds": 60,
+                    "forceRebootAfterDeferrals": false
+                }
+            },
+            "database": {
+                "path": "test.db"
+            },
+            "logging": {
+                "path": "test.log",
+                "level": "info",
+                "maxFiles": 5,
+                "maxSize": 10
+            },
+            "watchdog": {
+                "enabled": false,
+                "checkIntervalSeconds": 60,
+                "maxRestartAttempts": 3,
+                "restartDelaySeconds": 10,
+                "servicePath": "",
+                "serviceName": ""
+            }
+        }"#;
+
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(config_content.as_bytes()).unwrap();
+
+        // Test loading the config
+        let result = load(&file_path);
+        assert!(result.is_ok());
+
+        let config = result.unwrap();
+        assert_eq!(config.service.name, "TestService");
+        assert_eq!(config.database.path, "test.db");
+    }
 
     #[test]
     fn test_expand_env_vars_in_config() {

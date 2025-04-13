@@ -247,6 +247,21 @@ fn run_service() -> Result<()> {
         path
     });
 
+    info!("Using configuration file: {:?}", config_path);
+
+    // Validate the configuration path
+    let path_str = config_path.to_string_lossy();
+    if path_str.contains(':') && !config_path.is_absolute() {
+        // Check for unsupported URL schemes
+        if path_str.starts_with("file://") {
+            error!("File URL scheme is not supported. Use a local path instead.");
+            return Err(anyhow::anyhow!("Unsupported URL scheme: file://"));
+        } else if !path_str.starts_with("http://") && !path_str.starts_with("https://") {
+            error!("Unsupported URL scheme in configuration path: {}", path_str);
+            return Err(anyhow::anyhow!("Unsupported URL scheme: {}", path_str));
+        }
+    }
+
     let config = config::load(&config_path).context("Failed to load configuration")?;
     info!("Configuration loaded from {:?}", config_path);
 

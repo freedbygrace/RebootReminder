@@ -84,6 +84,19 @@ fn main() -> Result<()> {
 
     info!("Using configuration file: {:?}", config_path);
 
+    // Validate the configuration path
+    let path_str = config_path.to_string_lossy();
+    if path_str.contains(':') && !config_path.is_absolute() {
+        // Check for unsupported URL schemes
+        if path_str.starts_with("file://") {
+            error!("File URL scheme is not supported. Use a local path instead.");
+            return Err(anyhow::anyhow!("Unsupported URL scheme: file://"));
+        } else if !path_str.starts_with("http://") && !path_str.starts_with("https://") {
+            error!("Unsupported URL scheme in configuration path: {}", path_str);
+            return Err(anyhow::anyhow!("Unsupported URL scheme: {}", path_str));
+        }
+    }
+
     // Set the config path for the service
     if let Some(Commands::Run) = &args.command {
         unsafe {
