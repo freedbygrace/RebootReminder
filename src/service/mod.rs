@@ -151,6 +151,9 @@ fn run_service_directly(_config: Config, _db_pool: DbPool) -> Result<()> {
         CONFIG_PATH = Some(PathBuf::from("config.json"));
     }
 
+    // The database is already initialized in the main function
+    // We just need to make sure the configuration is set correctly
+
     // Call the run_service function directly
     run_service()
 }
@@ -185,6 +188,10 @@ pub fn run(config: Config, db_pool: DbPool) -> Result<()> {
             if let Some(code) = error_code {
                 if code == 1063 {
                     warn!("Not running as a Windows service (error 1063), falling back to direct execution");
+                    // Set the global flag to indicate we're not running as a service
+                    unsafe {
+                        RUNNING_AS_SERVICE = false;
+                    }
                     // Fall back to direct execution
                     run_service_directly(config, db_pool)
                 } else {
@@ -197,6 +204,28 @@ pub fn run(config: Config, db_pool: DbPool) -> Result<()> {
             }
         }
     }
+}
+
+/// Helper function to update service status with checkpoint
+fn update_service_status(
+    status_handle: &windows_service::service_control_handler::ServiceStatusHandle,
+    current_state: ServiceState,
+    checkpoint: u32,
+    wait_hint_secs: u32,
+    controls_accepted: ServiceControlAccept,
+) -> Result<()> {
+    info!("Updating service status to {:?} (checkpoint: {}, wait_hint: {}s)", current_state, checkpoint, wait_hint_secs);
+    status_handle
+        .set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state,
+            controls_accepted,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint,
+            wait_hint: std::time::Duration::from_secs(wait_hint_secs as u64),
+            process_id: None,
+        })
+        .context("Failed to set service status")
 }
 
 /// Service main function
@@ -246,20 +275,10 @@ fn service_main_impl(arguments: Vec<OsString>) {
     };
 
     // Tell the service manager we are starting
-    info!("Setting service status to StartPending");
-    if let Err(e) = status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::StartPending,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: std::time::Duration::from_secs(10),
-        process_id: None,
-    }) {
+    if let Err(e) = update_service_status(&status_handle, ServiceState::StartPending, 0, 60, ServiceControlAccept::empty()) {
         error!("Failed to set service status to StartPending: {}", e);
         return;
     }
-    info!("Service status set to StartPending successfully");
 
     // Run the service
     match run_service() {
@@ -272,16 +291,8 @@ fn service_main_impl(arguments: Vec<OsString>) {
     }
 
     // Tell the service manager we are stopped
-    if let Err(e) = status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::Stopped,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: std::time::Duration::default(),
-        process_id: None,
-    }) {
-        error!("Failed to set service status: {}", e);
+    if let Err(e) = update_service_status(&status_handle, ServiceState::Stopped, 0, 0, ServiceControlAccept::empty()) {
+        error!("Failed to set service status to Stopped: {}", e);
     }
 }
 
@@ -323,8 +334,61 @@ fn ensure_directories_exist(config: &Config) -> Result<()> {
 fn run_service() -> Result<()> {
     info!("Starting service initialization in run_service");
 
+    // Create a status handle for updating service status
+    let status_handle = match service_control_handler::register(SERVICE_NAME, |control_event| {
+        match control_event {
+            ServiceControl::Stop => {
+                info!("Service stop requested");
+                unsafe {
+                    SERVICE_RUNNING = false;
+                }
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => {
+                debug!("Service interrogate requested");
+                ServiceControlHandlerResult::NoError
+            },
+            ServiceControl::PowerEvent(event_type) => {
+                debug!("Power event received: {:?}", event_type);
+                // Handle power events like sleep/resume
+                ServiceControlHandlerResult::NoError
+            },
+            ServiceControl::SessionChange(session_change) => {
+                debug!("Session change event received: {:?}", session_change);
+                // Handle session changes like user logon/logoff
+                ServiceControlHandlerResult::NoError
+            },
+            _ => {
+                debug!("Unhandled service control event: {:?}", control_event);
+                ServiceControlHandlerResult::NotImplemented
+            },
+        }
+    }) {
+        Ok(handle) => {
+            info!("Service control handler registered successfully");
+            handle
+        },
+        Err(e) => {
+            error!("Failed to register service control handler in run_service: {}", e);
+            // If we're not running as a service, we can continue without the service control handler
+            if !unsafe { RUNNING_AS_SERVICE } {
+                info!("Not running as a service, continuing without service control handler");
+                return Ok(());
+            }
+            return Err(anyhow::anyhow!("Failed to register service control handler: {}", e));
+        }
+    };
+
+    // Set initial status to StartPending
+    if let Err(e) = update_service_status(&status_handle, ServiceState::StartPending, 1, 120, ServiceControlAccept::empty()) {
+        error!("Failed to set initial service status: {}", e);
+        // Continue anyway, as this might not be fatal
+    }
+
     // Load configuration
     info!("Determining configuration path");
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 2, 120, ServiceControlAccept::empty());
     #[allow(static_mut_refs)]
     let config_path = unsafe { CONFIG_PATH.clone() }.unwrap_or_else(|| {
         info!("No configuration path set, using default");
@@ -364,6 +428,8 @@ fn run_service() -> Result<()> {
         }
     };
     info!("Configuration loaded from {:?}", config_path);
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 3, 120, ServiceControlAccept::empty());
 
     // Create necessary directories
     info!("Creating necessary directories");
@@ -377,6 +443,8 @@ fn run_service() -> Result<()> {
 
     // Initialize database
     info!("Initializing database at {}", config.database.path);
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 4, 120, ServiceControlAccept::empty());
     let db_pool = match database::init(&config.database) {
         Ok(pool) => {
             info!("Database initialized successfully");
@@ -390,6 +458,8 @@ fn run_service() -> Result<()> {
 
     // Create impersonator
     let impersonator = Arc::new(Impersonator::new());
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 5, 120, ServiceControlAccept::empty());
 
     // Create notification manager
     let mut notification_manager = NotificationManager::new(
@@ -397,6 +467,8 @@ fn run_service() -> Result<()> {
         db_pool.clone(),
         impersonator.clone(),
     );
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 6, 120, ServiceControlAccept::empty());
     notification_manager
         .initialize()
         .context("Failed to initialize notification manager")?;
@@ -404,11 +476,17 @@ fn run_service() -> Result<()> {
 
     // Create reboot detector
     let detector = RebootDetector::new(&config.reboot);
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 7, 120, ServiceControlAccept::empty());
 
     // Create reboot history manager
     let history_manager = RebootHistoryManager::new(config.reboot.clone(), db_pool.clone());
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 8, 120, ServiceControlAccept::empty());
 
     // Create and start watchdog if enabled
+    // Update status to indicate progress
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 9, 120, ServiceControlAccept::empty());
     if config.watchdog.enabled {
         info!("Initializing watchdog service");
         // Get check interval from either timespan or legacy field
@@ -484,6 +562,17 @@ fn run_service() -> Result<()> {
         Err(e) => {
             warn!("Failed to get system info: {}", e);
         }
+    }
+
+    // Update status to indicate progress - final checkpoint before Running
+    let _ = update_service_status(&status_handle, ServiceState::StartPending, 10, 120, ServiceControlAccept::empty());
+
+    // Set service status to Running
+    if let Err(e) = update_service_status(&status_handle, ServiceState::Running, 0, 0, ServiceControlAccept::STOP) {
+        error!("Failed to set service status to Running: {}", e);
+        // Continue anyway, as this might not be fatal
+    } else {
+        info!("Service status set to Running successfully");
     }
 
     // Create shared configuration
@@ -715,7 +804,8 @@ fn run_service() -> Result<()> {
         })
     };
 
-    // Tell the service manager we are running
+    // Tell the service manager we are running - this is a second registration
+    // that will be used for the main service loop, not the initialization
     let status_handle = match service_control_handler::register(SERVICE_NAME, |control_event| {
         match control_event {
             ServiceControl::Stop => {
@@ -760,17 +850,9 @@ fn run_service() -> Result<()> {
         }
     };
 
-    status_handle
-        .set_service_status(ServiceStatus {
-            service_type: ServiceType::OWN_PROCESS,
-            current_state: ServiceState::Running,
-            controls_accepted: ServiceControlAccept::STOP,
-            exit_code: ServiceExitCode::Win32(0),
-            checkpoint: 0,
-            wait_hint: std::time::Duration::default(),
-            process_id: None,
-        })
-        .context("Failed to set service status")?;
+    // Set the service status to Running using our helper function
+    update_service_status(&status_handle, ServiceState::Running, 0, 0, ServiceControlAccept::STOP)
+        .context("Failed to set service status to Running")?;
 
     // Wait for service to stop
     while unsafe { SERVICE_RUNNING } {
