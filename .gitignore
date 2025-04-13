@@ -40,8 +40,13 @@ Cargo.lock
 *.dll
 *.so
 *.dylib
+*.zip
+*.7z
+*.tar.gz
+*.tgz
 /dist/
 /installer/
+/release-packages/
 
 # Database files
 *.db

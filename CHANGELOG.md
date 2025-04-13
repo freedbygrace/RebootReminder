@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2025.04.12-2230] - 2025-04-12
+
+### Fixed
+- Fixed configuration loading to properly handle local paths, UNC paths, and HTTP/HTTPS URLs
+- Improved error messages for unsupported URL schemes
+- Updated documentation to clarify supported configuration path types
+
 ## [v2025.04.12-2130] - 2025-04-12
 
 ### Added
