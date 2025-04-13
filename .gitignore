@@ -42,6 +42,8 @@ Cargo.lock
 *.dylib
 /dist/
 /installer/
+/release-packages/
+*.zip
 
 # Database files
 *.db
