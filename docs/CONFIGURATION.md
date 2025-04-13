@@ -10,6 +10,32 @@ By default, the application looks for a configuration file named `config.json` i
 reboot_reminder.exe --config "C:\path\to\config.json"
 ```
 
+### Supported Configuration Paths
+
+The application supports the following types of configuration paths:
+
+1. **Local file paths**:
+   ```
+   reboot_reminder.exe --config "C:\path\to\config.json"
+   ```
+
+2. **UNC network paths**:
+   ```
+   reboot_reminder.exe --config "\\server\share\config.json"
+   ```
+
+3. **HTTP/HTTPS URLs**:
+   ```
+   reboot_reminder.exe --config "https://example.com/config.json"
+   ```
+
+4. **File URLs**:
+   ```
+   reboot_reminder.exe --config "file:///C:/path/to/config.json"
+   ```
+
+> **Note**: Only HTTP, HTTPS, and file URL schemes are supported. Other URL schemes (such as FTP) will result in an error.
+
 ## Configuration Format
 
 The configuration file can be in either JSON or XML format. The application automatically detects the format based on the file extension.

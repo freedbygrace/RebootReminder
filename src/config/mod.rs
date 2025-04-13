@@ -19,29 +19,56 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Config> {
     debug!("Loading configuration from {:?}", path);
 
     let content = if is_url(path.to_string_lossy().as_ref()) {
-        // Load from URL
-        let url = path.to_string_lossy();
-        info!("Loading configuration from URL: {}", url);
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .context("Failed to create HTTP client")?;
+        let path_str = path.to_string_lossy();
 
-        let response = client
-            .get(url.as_ref())
-            .send()
-            .context("Failed to fetch configuration from URL")?;
+        // Check if it's a UNC path
+        if path_str.starts_with("\\\\") {
+            // Handle UNC path as a file
+            info!("Loading configuration from UNC path: {}", path_str);
+            fs::read_to_string(path).context("Failed to read configuration file from UNC path")?
+        } else if let Ok(url) = Url::parse(&path_str) {
+            // Handle URL based on scheme
+            match url.scheme() {
+                "http" | "https" => {
+                    // Load from HTTP/HTTPS URL
+                    info!("Loading configuration from HTTP(S) URL: {}", url);
+                    let client = Client::builder()
+                        .timeout(Duration::from_secs(30))
+                        .build()
+                        .context("Failed to create HTTP client")?;
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to fetch configuration from URL: HTTP {}",
-                response.status()
-            ));
+                    let response = client
+                        .get(url.as_str())
+                        .send()
+                        .context("Failed to fetch configuration from URL")?;
+
+                    if !response.status().is_success() {
+                        return Err(anyhow::anyhow!(
+                            "Failed to fetch configuration from URL: HTTP {}",
+                            response.status()
+                        ));
+                    }
+
+                    response.text().context("Failed to read configuration from URL")?
+                },
+                "file" => {
+                    // Load from file:// URL
+                    info!("Loading configuration from file URL: {}", url);
+                    let file_path = url.to_file_path()
+                        .map_err(|_| anyhow::anyhow!("Invalid file URL: {}", url))?;
+                    fs::read_to_string(file_path).context("Failed to read configuration from file URL")?
+                },
+                scheme => {
+                    // Unsupported URL scheme
+                    return Err(anyhow::anyhow!("URL scheme is not allowed: {}", scheme));
+                }
+            }
+        } else {
+            // This shouldn't happen if is_url() is implemented correctly
+            return Err(anyhow::anyhow!("Failed to parse URL: {}", path_str));
         }
-
-        response.text().context("Failed to read configuration from URL")?
     } else {
-        // Load from file
+        // Load from regular file path
         info!("Loading configuration from file: {:?}", path);
         fs::read_to_string(path).context("Failed to read configuration file")?
     };
@@ -361,9 +388,19 @@ fn validate_config(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Check if a string is a URL
+/// Check if a string is a URL with an allowed scheme
 fn is_url(s: &str) -> bool {
-    Url::parse(s).is_ok()
+    if let Ok(url) = Url::parse(s) {
+        // Only allow http and https schemes
+        match url.scheme() {
+            "http" | "https" => true,
+            "file" => true, // Allow file:// URLs for local files
+            _ => false,
+        }
+    } else {
+        // Check for UNC paths (\\server\share)
+        s.starts_with("\\\\") && s.chars().skip(2).take(1).next().map_or(false, |c| c != '\\') && s.chars().skip(2).any(|c| c == '\\')
+    }
 }
 
 /// Expand environment variables in configuration paths
