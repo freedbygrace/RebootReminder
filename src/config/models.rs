@@ -184,6 +184,10 @@ pub struct RebootConfig {
 
     /// Reboot detection methods
     pub detection_methods: DetectionMethodsConfig,
+
+    /// System reboot options
+    #[serde(default = "default_system_reboot_config")]
+    pub system_reboot: SystemRebootConfig,
 }
 
 /// Timeframe configuration
@@ -303,4 +307,65 @@ fn default_watchdog_restart_delay() -> u64 {
 /// Default value for watchdog service name
 fn default_watchdog_service_name() -> String {
     "RebootReminder".to_string()
+}
+
+/// System reboot configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemRebootConfig {
+    /// Whether to allow users to initiate system reboots
+    #[serde(default = "default_system_reboot_enabled")]
+    pub enabled: bool,
+
+    /// Countdown duration in seconds before reboot
+    #[serde(default = "default_system_reboot_countdown")]
+    pub countdown_seconds: u32,
+
+    /// Whether to show a confirmation dialog
+    #[serde(default = "default_system_reboot_confirmation")]
+    pub show_confirmation: bool,
+
+    /// Confirmation message
+    #[serde(default = "default_system_reboot_message")]
+    pub confirmation_message: String,
+
+    /// Confirmation title
+    #[serde(default = "default_system_reboot_title")]
+    pub confirmation_title: String,
+}
+
+/// Default value for system reboot config
+pub fn default_system_reboot_config() -> SystemRebootConfig {
+    SystemRebootConfig {
+        enabled: true,
+        countdown_seconds: 30,
+        show_confirmation: true,
+        confirmation_message: "The system needs to restart. Do you want to restart now?".to_string(),
+        confirmation_title: "System Restart Required".to_string(),
+    }
+}
+
+/// Default value for system reboot enabled
+fn default_system_reboot_enabled() -> bool {
+    true
+}
+
+/// Default value for system reboot countdown
+fn default_system_reboot_countdown() -> u32 {
+    30
+}
+
+/// Default value for system reboot confirmation
+fn default_system_reboot_confirmation() -> bool {
+    true
+}
+
+/// Default value for system reboot message
+fn default_system_reboot_message() -> String {
+    "The system needs to restart. Do you want to restart now?".to_string()
+}
+
+/// Default value for system reboot title
+fn default_system_reboot_title() -> String {
+    "System Restart Required".to_string()
 }

@@ -1,12 +1,12 @@
 pub mod toast;
 mod tray;
 
-use crate::config::{NotificationConfig, NotificationType};
+use crate::config::{Config, NotificationConfig, NotificationType, SystemRebootConfig};
 use crate::database::{DbPool, Notification, NotificationInteraction, UserSession};
 use crate::impersonation::Impersonator;
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveTime, Utc, Weekday};
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 // use uuid::Uuid;
@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 /// Notification manager
 pub struct NotificationManager {
     config: NotificationConfig,
+    system_reboot_config: SystemRebootConfig,
     db_pool: DbPool,
     impersonator: Arc<Impersonator>,
     tray_manager: Option<Arc<Mutex<tray::TrayManager>>>,
@@ -22,12 +23,13 @@ pub struct NotificationManager {
 impl NotificationManager {
     /// Create a new notification manager
     pub fn new(
-        config: &NotificationConfig,
+        config: &Config,
         db_pool: DbPool,
         impersonator: Arc<Impersonator>,
     ) -> Self {
         Self {
-            config: config.clone(),
+            config: config.notification.clone(),
+            system_reboot_config: config.reboot.system_reboot.clone(),
             db_pool,
             impersonator,
             tray_manager: None,
@@ -194,12 +196,35 @@ impl NotificationManager {
         action: &str,
         session: &UserSession,
     ) -> Result<()> {
-        debug!("Recording notification interaction: {} - {}", notification_id, action);
+        info!("Recording notification interaction: {} - {}", notification_id, action);
+        info!("User: {}, Session: {}", session.user_name, session.session_id);
 
         // Create interaction record
         let mut interaction = NotificationInteraction::new(notification_id, action);
         interaction.user_name = Some(session.user_name.clone());
         interaction.session_id = Some(session.session_id.clone());
+
+        // Check if this is a reboot action
+        if action.starts_with("reboot:") {
+            info!("Reboot action detected: {}", action);
+
+            // Add details about the reboot action
+            let details = format!("Reboot initiated by user {} from session {}",
+                                 session.user_name, session.session_id);
+            interaction.details = Some(details.clone());
+
+            // Save to database before attempting reboot
+            crate::database::add_notification_interaction(&self.db_pool, &interaction)
+                .context("Failed to save notification interaction to database")?;
+
+            info!("Processing reboot action: {}", action);
+
+            // Handle the reboot action
+            self.handle_reboot_action(action, session)
+                .context("Failed to handle reboot action")?;
+
+            return Ok(());
+        }
 
         // Save to database
         crate::database::add_notification_interaction(&self.db_pool, &interaction)
@@ -207,6 +232,54 @@ impl NotificationManager {
 
         info!("Notification interaction recorded: {} - {}", notification_id, action);
         Ok(())
+    }
+
+    /// Handle a reboot action
+    fn handle_reboot_action(&self, action: &str, session: &UserSession) -> Result<()> {
+        info!("Handling reboot action: {}", action);
+        info!("Initiated by user: {} (session: {})", session.user_name, session.session_id);
+
+        // Parse the action to get parameters
+        let parts: Vec<&str> = action.split(':').collect();
+        if parts.len() < 2 {
+            return Err(anyhow::anyhow!("Invalid reboot action format: {}", action));
+        }
+
+        // Get the reboot type
+        let reboot_type = parts[1];
+        info!("Reboot type: {}", reboot_type);
+
+        // Create reboot configuration
+        let reboot_config = crate::reboot::system::RebootConfig {
+            countdown_seconds: self.system_reboot_config.countdown_seconds,
+            show_confirmation: self.system_reboot_config.show_confirmation,
+            confirmation_message: self.system_reboot_config.confirmation_message.clone(),
+            confirmation_title: self.system_reboot_config.confirmation_title.clone(),
+        };
+
+        // Check if system reboots are enabled
+        if !self.system_reboot_config.enabled {
+            warn!("System reboot requested but feature is disabled in configuration");
+            return Err(anyhow::anyhow!("System reboot feature is disabled"));
+        }
+
+        // Initiate the reboot
+        info!("Initiating system reboot with countdown: {} seconds", reboot_config.countdown_seconds);
+        match crate::reboot::system::reboot_system(&reboot_config) {
+            Ok(confirmed) => {
+                if confirmed {
+                    info!("System reboot initiated successfully");
+                    Ok(())
+                } else {
+                    info!("System reboot was cancelled by user");
+                    Err(anyhow::anyhow!("Reboot cancelled by user"))
+                }
+            },
+            Err(e) => {
+                error!("Failed to initiate system reboot: {}", e);
+                Err(e.context("Failed to initiate system reboot"))
+            }
+        }
     }
 
     /// Check if the current time is within quiet hours
@@ -293,23 +366,34 @@ impl NotificationManager {
 
     /// Update the tray status
     pub fn update_tray_status(&self, status: &str) -> Result<()> {
-        debug!("Updating tray status: {}", status);
+        info!("Updating tray status: {}", status);
 
         if let Some(tray_manager) = &self.tray_manager {
             let mut tray = tray_manager.lock().unwrap();
             tray.update_status(status)?;
+            info!("Tray status updated successfully");
+        } else {
+            info!("No tray manager available for updating status");
         }
 
         Ok(())
     }
 
     /// Enable or disable the reboot option
-    pub fn enable_reboot_option(&self, _enable: bool) -> Result<()> {
-        debug!("Setting reboot option enabled");
+    pub fn enable_reboot_option(&self, enable: bool) -> Result<()> {
+        info!("Setting reboot option enabled: {}", enable);
 
         if let Some(tray_manager) = &self.tray_manager {
             let mut tray = tray_manager.lock().unwrap();
-            tray.enable_reboot_item()?;
+            if enable {
+                tray.enable_reboot_item()?;
+                info!("Reboot option enabled successfully");
+            } else {
+                // TODO: Implement disable functionality when tray menu supports it
+                info!("Disabling reboot option not implemented yet");
+            }
+        } else {
+            info!("No tray manager available for enabling/disabling reboot option");
         }
 
         Ok(())
@@ -365,4 +449,6 @@ impl NotificationManager {
         info!("Deferral options set successfully");
         Ok(())
     }
+
+
 }

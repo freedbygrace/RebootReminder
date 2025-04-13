@@ -45,12 +45,18 @@ impl ToastNotification {
 
     /// Show the notification
     pub fn show(&self) -> Result<()> {
-        use winrt_notification::Toast;
+        use winrt_notification::{Toast, Duration, Sound};
 
         // Create a new toast notification
         let mut toast = Toast::new(Toast::POWERSHELL_APP_ID);
         toast = toast.title(&self.title);
         toast = toast.text1(&self.message);
+
+        // Set longer duration for important notifications
+        toast = toast.duration(Duration::Long);
+
+        // Add a sound for better visibility
+        toast = toast.sound(Some(Sound::Default));
 
         // Add icon if it exists
         let icon_path = Path::new(&self.icon_path);
@@ -61,10 +67,16 @@ impl ToastNotification {
 
         // Add action if provided
         if let Some(action_uri) = &self.action_uri {
-            // Skip button for now due to API compatibility issues
-            // toast = toast.button("View Details", action_uri);
-            let action_text = format!("Action: {}", action_uri);
-            toast = toast.text2(&action_text);
+            // For reboot action, add a clear button
+            if action_uri.starts_with("reboot:") {
+                toast = toast.text2("Click to restart your computer now");
+                // In a real implementation, we would use the button API
+                // toast = toast.button("Restart Now", action_uri);
+            } else {
+                // For other actions, just show the action text
+                let action_text = format!("Action: {}", action_uri);
+                toast = toast.text2(&action_text);
+            }
         }
 
         // Show the notification

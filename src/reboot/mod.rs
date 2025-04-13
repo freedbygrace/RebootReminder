@@ -1,5 +1,6 @@
 pub mod detector;
 pub mod history;
+pub mod system;
 
 use crate::config::RebootConfig;
 use crate::database::RebootState;

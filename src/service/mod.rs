@@ -262,7 +262,7 @@ fn run_service() -> Result<()> {
 
     // Create notification manager
     let mut notification_manager = NotificationManager::new(
-        &config.notification,
+        &config,
         db_pool.clone(),
         impersonator.clone(),
     );
@@ -467,7 +467,13 @@ fn run_service() -> Result<()> {
                                     // Show notification
                                     if let Ok(manager) = notification_manager.lock() {
                                         let message = config.notification.messages.reboot_required.clone();
-                                        let action = Some(config.notification.messages.action_required.clone());
+
+                                        // Create reboot action if system reboots are enabled
+                                        let action = if config.reboot.system_reboot.enabled {
+                                            Some("reboot:now".to_string())
+                                        } else {
+                                            Some(config.notification.messages.action_required.clone())
+                                        };
 
                                         if let Err(e) = manager.show_notification("reboot_required", &message, action.as_deref()) {
                                             error!("Failed to show notification: {}", e);
@@ -611,6 +617,7 @@ mod tests {
             reboot: RebootConfig {
                 timeframes: vec![],
                 detection_methods: DetectionMethodsConfig::default(),
+                system_reboot: config::models::default_system_reboot_config(),
             },
             database: DatabaseConfig {
                 path: db_path,

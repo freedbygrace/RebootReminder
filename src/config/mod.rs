@@ -192,6 +192,7 @@ pub fn default() -> Config {
                 registry: true,
                 pending_file_operations: true,
             },
+            system_reboot: default_system_reboot_config(),
         },
         database: DatabaseConfig {
             path: "rebootreminder.db".to_string(),
@@ -471,6 +472,7 @@ mod tests {
             reboot: RebootConfig {
                 timeframes: vec![],
                 detection_methods: DetectionMethodsConfig::default(),
+                system_reboot: models::default_system_reboot_config(),
             },
             database: DatabaseConfig {
                 path: "%PROGRAMDATA%\\TestApp\\test.db".to_string(),

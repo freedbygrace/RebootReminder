@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced notification interaction logging with detailed who, what, when, where, why information
 - Improved deferral tracking and logging
 - Added build support for both debug and release versions
+- Added system reboot functionality with confirmation dialog and customizable countdown
+- Added ability for users to initiate system restart directly from notifications
+- Added configuration options for system reboot behavior
 
 ## [2025.4.12-9000] - 2025-04-12
 

@@ -33,6 +33,13 @@
     }
   },
   "reboot": {
+    "systemReboot": {
+      "enabled": true,
+      "countdownSeconds": 30,
+      "showConfirmation": true,
+      "confirmationMessage": "The system needs to restart. Do you want to restart now?",
+      "confirmationTitle": "System Restart Required"
+    },
     "timeframes": [
       {
         "minHours": 0,
