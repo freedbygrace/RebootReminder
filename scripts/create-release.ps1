@@ -14,7 +14,7 @@ Set-Location $repoRoot
 if ([string]::IsNullOrEmpty($version)) {
     $readmeContent = Get-Content -Path (Join-Path $repoRoot "README.md") -Raw
     $versionMatch = [regex]::Match($readmeContent, '# Reboot Reminder (v[\d\.\-]+)')
-    
+
     if ($versionMatch.Success) {
         $version = $versionMatch.Groups[1].Value
     } else {
@@ -23,12 +23,58 @@ if ([string]::IsNullOrEmpty($version)) {
     }
 }
 
+# Ensure the version format is correct (no leading zeros in month)
+$versionPattern = 'v(\d+)\.(\d+)\.(\d+)-(\d+)'
+$versionMatch = [regex]::Match($version, $versionPattern)
+if ($versionMatch.Success) {
+    $year = $versionMatch.Groups[1].Value
+    $month = $versionMatch.Groups[2].Value
+    $day = $versionMatch.Groups[3].Value
+    $time = $versionMatch.Groups[4].Value
+
+    # Remove leading zero from month if present
+    $month = [int]$month
+
+    # Reconstruct version
+    $version = "v${year}.${month}.${day}-${time}"
+    Write-Host "Normalized version: $version" -ForegroundColor Green
+}
+
 # Ensure version starts with 'v'
 if (-not $version.StartsWith("v")) {
     $version = "v" + $version
 }
 
 Write-Host "Creating release package for version: $version" -ForegroundColor Green
+
+# Check if Cargo.toml version matches
+$cargoTomlPath = Join-Path $repoRoot "Cargo.toml"
+$cargoContent = Get-Content -Path $cargoTomlPath -Raw
+$cargoVersionMatch = [regex]::Match($cargoContent, 'version\s*=\s*"([\d\.\-]+)"')
+
+if ($cargoVersionMatch.Success) {
+    $cargoVersion = $cargoVersionMatch.Groups[1].Value
+    $versionWithoutV = $version.TrimStart('v')
+
+    if ($cargoVersion -ne $versionWithoutV) {
+        Write-Host "Warning: Version mismatch detected!" -ForegroundColor Yellow
+        Write-Host "  README.md version: $version" -ForegroundColor Yellow
+        Write-Host "  Cargo.toml version: $cargoVersion" -ForegroundColor Yellow
+
+        $updateCargo = Read-Host "Do you want to update Cargo.toml version to $versionWithoutV? (y/n)"
+        if ($updateCargo -eq 'y') {
+            $cargoContent = $cargoContent -replace 'version\s*=\s*"[\d\.\-]+"', "version = `"$versionWithoutV`""
+            Set-Content -Path $cargoTomlPath -Value $cargoContent
+            Write-Host "Updated Cargo.toml version to $versionWithoutV" -ForegroundColor Green
+        } else {
+            Write-Host "Continuing with version mismatch. This may cause issues." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Version check passed: README.md and Cargo.toml versions match." -ForegroundColor Green
+    }
+} else {
+    Write-Host "Warning: Could not find version in Cargo.toml" -ForegroundColor Yellow
+}
 
 # Build the project
 Write-Host "Building project..." -ForegroundColor Yellow

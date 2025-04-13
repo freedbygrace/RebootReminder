@@ -1,4 +1,4 @@
-# Reboot Reminder v2025.04.12-2300
+# Reboot Reminder v2025.4.12-2300
 
 A cross-platform reboot reminder system that runs as a Windows service and provides customizable notifications to users when system reboots are necessary.
 

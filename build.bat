@@ -1,5 +1,5 @@
 @echo off
-echo Building project v2025.04.12-2130...
+echo Building project v2025.4.12-2300...
 set PATH=%PATH%;%USERPROFILE%\.cargo\bin
 
 echo.
