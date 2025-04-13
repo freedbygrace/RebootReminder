@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added ability for users to initiate system restart directly from notifications
 - Added configuration options for system reboot behavior
 
+### Changed
+- Replaced all registry operations with native Windows API calls
+- Removed dependency on external command-line tools for registry operations
+- Improved performance and reliability of registry checks
+
 ## [2025.4.12-9000] - 2025-04-12
 
 ### Added

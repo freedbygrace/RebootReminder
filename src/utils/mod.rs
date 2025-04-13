@@ -6,6 +6,7 @@ use windows::Win32::System::Environment::{ExpandEnvironmentStringsW, GetEnvironm
 use windows::core::PCWSTR;
 
 pub mod timespan;
+pub mod registry;
 
 /// Expand Windows environment variables in a string
 ///

@@ -3,7 +3,8 @@ use crate::database::RebootSource;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use log::{debug, info, warn};
-use std::process::Command;
+
+use windows::Win32::System::Registry::HKEY_LOCAL_MACHINE;
 // use std::time::SystemTime;
 // use uuid::Uuid;
 use wmi::{self, COMLibrary};
@@ -142,17 +143,10 @@ impl RebootDetector {
         );
 
         // Check the registry key that indicates Windows Update requires a reboot
-        let output = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired",
-                "/ve",
-            ])
-            .output()
-            .context("Failed to execute reg query command")?;
-
-        // If the key exists, a reboot is required
-        let required = output.status.success();
+        let required = crate::utils::registry::key_exists(
+            HKEY_LOCAL_MACHINE,
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired"
+        )?;
 
         if required {
             source.details = Some("Windows Update registry key indicates a reboot is required".to_string());
@@ -200,17 +194,7 @@ impl RebootDetector {
         ];
 
         for path in &registry_paths {
-            let output = Command::new("reg")
-                .args(&[
-                    "query",
-                    &format!("HKLM\\{}", path),
-                    "/ve",
-                ])
-                .output()
-                .context(format!("Failed to execute reg query command for SCCM path: {}", path))?;
-
-            // If the key exists, a reboot is required
-            if output.status.success() {
+            if crate::utils::registry::key_exists(HKEY_LOCAL_MACHINE, path)? {
                 source.details = Some(format!("SCCM registry key indicates a reboot is pending: {}", path));
                 debug!("SCCM requires a reboot (registry key: {})", path);
                 return Ok((true, source));
@@ -247,35 +231,22 @@ impl RebootDetector {
         );
 
         // Check Component Based Servicing
-        let output = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending",
-                "/ve",
-            ])
-            .output()
-            .context("Failed to execute reg query command for CBS")?;
-
-        if output.status.success() {
+        if crate::utils::registry::key_exists(
+            HKEY_LOCAL_MACHINE,
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending"
+        )? {
             source.details = Some("Component Based Servicing registry key indicates a reboot is pending".to_string());
             debug!("Component Based Servicing requires a reboot");
             return Ok((true, source));
         }
 
         // Check Session Manager
-        let output = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager",
-                "/v",
-                "PendingFileRenameOperations",
-            ])
-            .output()
-            .context("Failed to execute reg query command for Session Manager")?;
-
-        if output.status.success() && !output.stdout.is_empty() {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            if !output_str.contains("REG_MULTI_SZ    ") {
+        if let Some(pending_renames) = crate::utils::registry::get_string_value(
+            HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+            "PendingFileRenameOperations"
+        )? {
+            if !pending_renames.is_empty() {
                 source.details = Some("Session Manager registry key indicates pending file rename operations".to_string());
                 debug!("Session Manager requires a reboot");
                 return Ok((true, source));
@@ -283,46 +254,23 @@ impl RebootDetector {
         }
 
         // Check for pending computer rename
-        let output_active = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ActiveComputerName",
-                "/v",
-                "ComputerName",
-            ])
-            .output()
-            .context("Failed to execute reg query command for ActiveComputerName")?;
+        let active_name = crate::utils::registry::get_string_value(
+            HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ActiveComputerName",
+            "ComputerName"
+        )?;
 
-        let output_pending = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName",
-                "/v",
-                "ComputerName",
-            ])
-            .output()
-            .context("Failed to execute reg query command for ComputerName")?;
+        let pending_name = crate::utils::registry::get_string_value(
+            HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName",
+            "ComputerName"
+        )?;
 
-        if output_active.status.success() && output_pending.status.success() {
-            let active_str = String::from_utf8_lossy(&output_active.stdout);
-            let pending_str = String::from_utf8_lossy(&output_pending.stdout);
-
-            let active_name = active_str
-                .lines()
-                .find(|line| line.contains("ComputerName"))
-                .and_then(|line| line.split_whitespace().last());
-
-            let pending_name = pending_str
-                .lines()
-                .find(|line| line.contains("ComputerName"))
-                .and_then(|line| line.split_whitespace().last());
-
-            if let (Some(active), Some(pending)) = (active_name, pending_name) {
-                if active != pending {
-                    source.details = Some("Computer name change is pending".to_string());
-                    debug!("Computer name change requires a reboot");
-                    return Ok((true, source));
-                }
+        if let (Some(active), Some(pending)) = (active_name, pending_name) {
+            if !crate::utils::registry::compare_computer_names(&active, &pending) {
+                source.details = Some("Computer name change is pending".to_string());
+                debug!("Computer name change requires a reboot");
+                return Ok((true, source));
             }
         }
 
@@ -342,19 +290,12 @@ impl RebootDetector {
         );
 
         // Check for pending file rename operations in the registry
-        let output = Command::new("reg")
-            .args(&[
-                "query",
-                "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager",
-                "/v",
-                "PendingFileRenameOperations",
-            ])
-            .output()
-            .context("Failed to execute reg query command for PendingFileRenameOperations")?;
-
-        if output.status.success() && !output.stdout.is_empty() {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            if !output_str.contains("REG_MULTI_SZ    ") {
+        if let Some(pending_renames) = crate::utils::registry::get_string_value(
+            HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+            "PendingFileRenameOperations"
+        )? {
+            if !pending_renames.is_empty() {
                 source.details = Some("Pending file rename operations detected".to_string());
                 debug!("Pending file rename operations require a reboot");
                 return Ok((true, source));

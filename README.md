@@ -10,7 +10,7 @@ A cross-platform reboot reminder system that runs as a Windows service and provi
 - Customizable notifications via JSON or XML configuration files
 - Supports both tray and toast notifications
 - Tracks system reboot history using Windows events
-- Detects when reboots are necessary using multiple methods
+- Detects when reboots are necessary using multiple methods with native Windows API calls
 - Stores state using embedded database
 - Comprehensive logging with rotation and detailed database operations
 - Customizable reboot reminder timeframes and deferral options with flexible timespan format (e.g., "30m", "2h")
@@ -20,6 +20,7 @@ A cross-platform reboot reminder system that runs as a Windows service and provi
 - Optional watchdog service for improved reliability
 - Detailed tracking of how long a reboot has been required
 - Enhanced logging for configuration loading and reboot detection
+- Allows users to initiate system restart directly from notifications with confirmation dialog and countdown
 
 ## Requirements
 
