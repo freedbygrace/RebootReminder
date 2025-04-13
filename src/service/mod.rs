@@ -716,10 +716,39 @@ fn run_service() -> Result<()> {
     };
 
     // Tell the service manager we are running
-    let status_handle = service_control_handler::register(SERVICE_NAME, |_| {
-        ServiceControlHandlerResult::NoError
-    })
-    .context("Failed to register service control handler")?;
+    let status_handle = match service_control_handler::register(SERVICE_NAME, |control_event| {
+        match control_event {
+            ServiceControl::Stop => {
+                info!("Service stop requested");
+                unsafe {
+                    SERVICE_RUNNING = false;
+                }
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => {
+                debug!("Service interrogate requested");
+                ServiceControlHandlerResult::NoError
+            },
+            _ => {
+                debug!("Unhandled service control event: {:?}", control_event);
+                ServiceControlHandlerResult::NotImplemented
+            },
+        }
+    }) {
+        Ok(handle) => {
+            info!("Service control handler registered successfully");
+            handle
+        },
+        Err(e) => {
+            error!("Failed to register service control handler: {}", e);
+            // If we're not running as a service, we can continue without the service control handler
+            if !unsafe { RUNNING_AS_SERVICE } {
+                info!("Not running as a service, continuing without service control handler");
+                return Ok(());
+            }
+            return Err(anyhow::anyhow!("Failed to register service control handler: {}", e));
+        }
+    };
 
     status_handle
         .set_service_status(ServiceStatus {

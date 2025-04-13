@@ -26,8 +26,27 @@ pub fn init(debug: bool) -> Result<()> {
         .build();
 
     // Create a default file appender
-    let log_path = "logs/rebootreminder.log";
-    let file_appender = create_rolling_file_appender(log_path, 10, 7)?;
+    // Use a more absolute path for the log file when running as a service
+    let log_path = if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let mut path = parent.to_path_buf();
+            path.push("logs");
+            // Create the logs directory if it doesn't exist
+            if !path.exists() {
+                if let Err(e) = std::fs::create_dir_all(&path) {
+                    eprintln!("Failed to create logs directory: {}", e);
+                }
+            }
+            path.push("rebootreminder.log");
+            path.to_string_lossy().to_string()
+        } else {
+            "logs/rebootreminder.log".to_string()
+        }
+    } else {
+        "logs/rebootreminder.log".to_string()
+    };
+
+    let file_appender = create_rolling_file_appender(&log_path, 10, 7)?;
 
     // Set log level based on debug flag
     let level = if debug {

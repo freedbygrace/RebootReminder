@@ -72,19 +72,20 @@ impl RebootHistoryManager {
             let context = EvtCreateRenderContext(None, 0)?;
 
             // Get events
-            let mut event_handles = [EVT_HANDLE::default()];
+            let mut event_handles = [0isize; 1];
             let mut returned = 0;
-            let mut event_handles_raw = [0isize; 1];
             let result = EvtNext(
                 query_handle,
-                &mut event_handles_raw,
+                &mut event_handles,
                 1,
                 0,
                 &mut returned,
             );
-            if let Ok(_) = result {
-                event_handles[0] = std::mem::transmute(event_handles_raw[0]);
-            }
+            let mut event_handle = if returned > 0 {
+                EVT_HANDLE(event_handles[0])
+            } else {
+                EVT_HANDLE::default()
+            };
 
             if let Err(e) = result {
                 let error_code = windows::Win32::Foundation::GetLastError();
@@ -98,7 +99,6 @@ impl RebootHistoryManager {
 
             // Process each event
             while returned > 0 && events.len() < limit {
-                let event_handle = event_handles[0];
 
                 // Get the event XML
                 let mut buffer_used = 0;
@@ -222,16 +222,16 @@ impl RebootHistoryManager {
 
                 // Get the next event
                 let mut returned = 0;
-                let mut event_handles_raw = [0isize; 1];
+                let mut event_handles = [0isize; 1];
                 let result = EvtNext(
                     query_handle,
-                    &mut event_handles_raw,
+                    &mut event_handles,
                     1,
                     0,
                     &mut returned,
                 );
-                if let Ok(_) = result {
-                    event_handles[0] = std::mem::transmute(event_handles_raw[0]);
+                if returned > 0 {
+                    event_handle = EVT_HANDLE(event_handles[0]);
                 }
 
                 if let Err(e) = result {

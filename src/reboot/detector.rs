@@ -378,9 +378,21 @@ impl RebootDetector {
         debug!("Getting system information using WMI");
 
         // Create a single WMI connection to reuse
-        let com_lib = wmi::COMLibrary::new().context("Failed to initialize COM library")?;
-        let wmi_con = wmi::WMIConnection::new(com_lib.into())
-            .context("Failed to connect to WMI")?;
+        let com_lib = match wmi::COMLibrary::new() {
+            Ok(lib) => lib,
+            Err(e) => {
+                warn!("Failed to initialize COM library: {}", e);
+                return Err(anyhow::anyhow!("Failed to initialize COM library: {}", e));
+            }
+        };
+
+        let wmi_con = match wmi::WMIConnection::new(com_lib.into()) {
+            Ok(con) => con,
+            Err(e) => {
+                warn!("Failed to connect to WMI: {}", e);
+                return Err(anyhow::anyhow!("Failed to connect to WMI: {}", e));
+            }
+        };
 
         // Define a combined struct to hold the WMI query results
         // This allows us to get multiple properties in a single query
@@ -413,8 +425,13 @@ impl RebootDetector {
         let query = "SELECT OS.Caption, OS.CSName, OS.LastBootUpTime, CS.Domain, CS.Model \
                     FROM Win32_OperatingSystem AS OS, Win32_ComputerSystem AS CS";
 
-        let results: Vec<SystemInfoWMI> = wmi_con.raw_query(query)
-            .context("Failed to query WMI for system information")?;
+        let results: Vec<SystemInfoWMI> = match wmi_con.raw_query(query) {
+            Ok(results) => results,
+            Err(e) => {
+                warn!("Failed to query WMI for system information: {}", e);
+                return Err(anyhow::anyhow!("Failed to query WMI for system information: {}", e));
+            }
+        };
 
         if results.is_empty() {
             return Err(anyhow::anyhow!("No system information found in WMI"));
@@ -458,8 +475,14 @@ impl RebootDetector {
 
         // Query WMI for network adapter information with a more efficient query
         let query = "SELECT IPAddress FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled = True";
-        let na_results: Vec<NetworkAdapterInfo> = wmi_con.raw_query(query)
-            .context("Failed to query WMI for network adapter information")?;
+        let na_results: Vec<NetworkAdapterInfo> = match wmi_con.raw_query(query) {
+            Ok(results) => results,
+            Err(e) => {
+                warn!("Failed to query WMI for network adapter information: {}", e);
+                // Continue without network adapter information
+                Vec::new()
+            }
+        };
 
         let ip_address = na_results.iter()
             .filter_map(|na| na.ip_address.as_ref())
