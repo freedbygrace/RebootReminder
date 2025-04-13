@@ -110,6 +110,7 @@ Copy-Item (Join-Path $repoRoot "LICENSE") $releaseDir -Force
 Copy-Item (Join-Path $repoRoot "config\*.json") $releaseDir -Force
 Copy-Item (Join-Path $repoRoot "config\*.xml") $releaseDir -Force
 Copy-Item (Join-Path $repoRoot "docs\CONFIGURATION.md") $releaseDir -Force
+Copy-Item (Join-Path $repoRoot "resources\icons\app_icon.ico") $releaseDir -Force
 
 # Create release-packages directory if it doesn't exist
 $releasePackagesDir = Join-Path $repoRoot "release-packages"
@@ -135,6 +136,7 @@ Write-Host "Copying individual files for separate upload..." -ForegroundColor Ye
 Copy-Item (Join-Path $repoRoot "target\release\reboot_reminder.exe") $releasePackagesDir -Force
 Copy-Item (Join-Path $repoRoot "config.example.json") (Join-Path $releasePackagesDir "config.sample.json") -Force
 Copy-Item (Join-Path $repoRoot "config.example.xml") (Join-Path $releasePackagesDir "config.sample.xml") -Force
+Copy-Item (Join-Path $repoRoot "resources\icons\app_icon.ico") $releasePackagesDir -Force
 
 Write-Host "Release package created successfully: $zipFilePath" -ForegroundColor Green
 
