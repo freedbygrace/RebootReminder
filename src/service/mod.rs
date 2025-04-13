@@ -32,6 +32,7 @@ const SERVICE_DESCRIPTION: &str = "Provides notifications when system reboots ar
 // Global state
 static mut CONFIG_PATH: Option<PathBuf> = None;
 static mut SERVICE_RUNNING: bool = false;
+static mut RUNNING_AS_SERVICE: bool = false;
 
 /// Set the configuration file path for the service
 pub unsafe fn set_config_path(path: PathBuf) {
@@ -135,6 +136,11 @@ pub fn uninstall() -> Result<()> {
     Ok(())
 }
 
+/// Check if running as a service
+pub fn is_running_as_service() -> bool {
+    unsafe { RUNNING_AS_SERVICE }
+}
+
 /// Run the service
 pub fn run(_config: Config, _db_pool: DbPool) -> Result<()> {
     info!("Running service");
@@ -142,6 +148,7 @@ pub fn run(_config: Config, _db_pool: DbPool) -> Result<()> {
     // Set global state
     unsafe {
         SERVICE_RUNNING = true;
+        RUNNING_AS_SERVICE = true;
     }
 
     // Start the service dispatcher

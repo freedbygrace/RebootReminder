@@ -4,6 +4,7 @@ mod tray;
 use crate::config::{Config, NotificationConfig, NotificationType, SystemRebootConfig};
 use crate::database::{DbPool, Notification, NotificationInteraction, UserSession};
 use crate::impersonation::Impersonator;
+use crate::service;
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveTime, Utc, Weekday};
 use log::{debug, info, warn, error};
@@ -40,18 +41,28 @@ impl NotificationManager {
     pub fn initialize(&mut self) -> Result<()> {
         debug!("Initializing notification manager");
 
-        // Initialize tray if needed
-        if self.config.notification_type == NotificationType::Tray
-            || self.config.notification_type == NotificationType::Both
+        // Initialize tray if needed and not running as a service
+        if (self.config.notification_type == NotificationType::Tray
+            || self.config.notification_type == NotificationType::Both)
+            && !service::is_running_as_service()
         {
             debug!("Initializing tray manager");
             let icon_path = self.resolve_icon_path(&self.config.branding.icon_path)?;
-            let tray_manager = tray::TrayManager::new(
+            match tray::TrayManager::new(
                 &self.config.branding.title,
                 &icon_path,
                 self.db_pool.clone(),
-            )?;
-            self.tray_manager = Some(Arc::new(Mutex::new(tray_manager)));
+            ) {
+                Ok(tray_manager) => {
+                    self.tray_manager = Some(Arc::new(Mutex::new(tray_manager)));
+                    info!("Tray manager initialized successfully");
+                },
+                Err(e) => {
+                    warn!("Failed to initialize tray manager, continuing without tray: {}", e);
+                }
+            }
+        } else if service::is_running_as_service() {
+            info!("Running as a service, skipping tray initialization");
         }
 
         info!("Notification manager initialized");
@@ -366,14 +377,28 @@ impl NotificationManager {
 
     /// Update the tray status
     pub fn update_tray_status(&self, status: &str) -> Result<()> {
-        info!("Updating tray status: {}", status);
+        debug!("Updating tray status: {}", status);
+
+        if service::is_running_as_service() {
+            debug!("Running as a service, skipping tray status update");
+            return Ok(());
+        }
 
         if let Some(tray_manager) = &self.tray_manager {
-            let mut tray = tray_manager.lock().unwrap();
-            tray.update_status(status)?;
-            info!("Tray status updated successfully");
+            match tray_manager.lock() {
+                Ok(mut tray) => {
+                    if let Err(e) = tray.update_status(status) {
+                        warn!("Failed to update tray status: {}", e);
+                    } else {
+                        debug!("Tray status updated successfully");
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to acquire lock on tray manager: {}", e);
+                }
+            }
         } else {
-            info!("No tray manager available for updating status");
+            debug!("No tray manager available for updating status");
         }
 
         Ok(())
@@ -381,19 +406,33 @@ impl NotificationManager {
 
     /// Enable or disable the reboot option
     pub fn enable_reboot_option(&self, enable: bool) -> Result<()> {
-        info!("Setting reboot option enabled: {}", enable);
+        debug!("Setting reboot option enabled: {}", enable);
+
+        if service::is_running_as_service() {
+            debug!("Running as a service, skipping reboot option update");
+            return Ok(());
+        }
 
         if let Some(tray_manager) = &self.tray_manager {
-            let mut tray = tray_manager.lock().unwrap();
-            if enable {
-                tray.enable_reboot_item()?;
-                info!("Reboot option enabled successfully");
-            } else {
-                // TODO: Implement disable functionality when tray menu supports it
-                info!("Disabling reboot option not implemented yet");
+            match tray_manager.lock() {
+                Ok(mut tray) => {
+                    if enable {
+                        if let Err(e) = tray.enable_reboot_item() {
+                            warn!("Failed to enable reboot option: {}", e);
+                        } else {
+                            debug!("Reboot option enabled successfully");
+                        }
+                    } else {
+                        // TODO: Implement disable functionality when tray menu supports it
+                        debug!("Disabling reboot option not implemented yet");
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to acquire lock on tray manager: {}", e);
+                }
             }
         } else {
-            info!("No tray manager available for enabling/disabling reboot option");
+            debug!("No tray manager available for enabling/disabling reboot option");
         }
 
         Ok(())
@@ -403,9 +442,26 @@ impl NotificationManager {
     pub fn enable_postpone_option(&self, _enable: bool) -> Result<()> {
         debug!("Setting postpone option enabled");
 
+        if service::is_running_as_service() {
+            debug!("Running as a service, skipping postpone option update");
+            return Ok(());
+        }
+
         if let Some(tray_manager) = &self.tray_manager {
-            let mut tray = tray_manager.lock().unwrap();
-            tray.enable_postpone_item()?;
+            match tray_manager.lock() {
+                Ok(mut tray) => {
+                    if let Err(e) = tray.enable_postpone_item() {
+                        warn!("Failed to enable postpone option: {}", e);
+                    } else {
+                        debug!("Postpone option enabled successfully");
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to acquire lock on tray manager: {}", e);
+                }
+            }
+        } else {
+            debug!("No tray manager available for enabling/disabling postpone option");
         }
 
         Ok(())
@@ -437,13 +493,24 @@ impl NotificationManager {
             }
         }
 
+        if service::is_running_as_service() {
+            debug!("Running as a service, skipping deferral options update");
+            return Ok(());
+        }
+
         if let Some(tray_manager) = &self.tray_manager {
-            let _tray = tray_manager.lock().unwrap();
-            info!("Tray manager found, but tray doesn't support setting deferral options directly");
-            // Tray doesn't support setting deferral options directly
-            // We'll need to implement this functionality
+            match tray_manager.lock() {
+                Ok(_tray) => {
+                    debug!("Tray manager found, but tray doesn't support setting deferral options directly");
+                    // Tray doesn't support setting deferral options directly
+                    // We'll need to implement this functionality
+                },
+                Err(e) => {
+                    warn!("Failed to acquire lock on tray manager: {}", e);
+                }
+            }
         } else {
-            info!("No tray manager available for setting deferral options");
+            debug!("No tray manager available for setting deferral options");
         }
 
         info!("Deferral options set successfully");
