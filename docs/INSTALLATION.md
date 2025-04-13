@@ -70,6 +70,10 @@ After installation, you can configure the service by editing the configuration f
 - If installed using the MSI installer: `C:\Program Files\RebootReminder\config.json`
 - If installed manually: In the directory where you extracted the files
 
+### Icon File
+
+The application uses an icon file named `icon.ico` for notifications and the application icon. By default, this file is installed in the same directory as the executable. You can specify a different icon file by setting the `iconPath` property in the configuration file.
+
 See the [Configuration Guide](CONFIGURATION.md) for details on customizing the application.
 
 ## Verification

@@ -233,7 +233,7 @@ The `branding` subsection configures the notification branding:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `title` | The title of the notifications | `"Reboot Reminder"` |
-| `iconPath` | The path to the icon file | `"icon.ico"` |
+| `iconPath` | The path to the application icon file (icon.ico) | `"icon.ico"` |
 | `company` | The company name | `"IT Department"` |
 
 #### Messages

@@ -97,7 +97,7 @@ Example configuration:
     "type": "both",
     "branding": {
       "title": "Reboot Reminder",
-      "iconPath": "icon.ico",
+      "iconPath": "icon.ico", // Path to the application icon
       "company": "IT Department"
     },
     "quietHours": {
