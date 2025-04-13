@@ -127,8 +127,9 @@ If you encounter issues during installation:
    - Open `C:\Program Files\RebootReminder\logs\rebootreminder.log`
 
 3. Verify that the service account has the necessary permissions:
-   - The service runs as SYSTEM by default
-   - Ensure that the SYSTEM account has read/write access to the installation directory
+   - The service runs as LocalSystem by default (no password required)
+   - Ensure that the LocalSystem account has read/write access to the installation directory
+   - The service is configured to automatically restart on failure
 
 4. If the service fails to start, try running the executable directly with debug logging:
 

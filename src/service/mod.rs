@@ -8,6 +8,7 @@ use chrono::{Duration, Utc};
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
+use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time;
@@ -62,7 +63,7 @@ pub fn install(name: &str, display_name: &str, description: &str) -> Result<()> 
         executable_path: exe_path,
         launch_arguments: vec!["run".to_string().into()],
         dependencies: vec![],
-        account_name: Some("NT AUTHORITY\\SYSTEM".to_string().into()),
+        account_name: None, // Use LocalSystem account by default
         account_password: None,
     };
 
@@ -82,6 +83,27 @@ pub fn install(name: &str, display_name: &str, description: &str) -> Result<()> 
     service
         .set_description(description)
         .context("Failed to set service description")?;
+
+    // Configure service recovery options using SC.exe
+    // This sets the service to restart on the first, second, and subsequent failures
+    info!("Configuring service recovery options");
+    let output = Command::new("sc")
+        .args([
+            "failure",
+            &name,
+            "reset=0",
+            "actions=restart/60000/restart/60000/restart/60000"
+        ])
+        .output()
+        .context("Failed to execute SC command for recovery options")?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        warn!("Failed to set service recovery options: {}", error);
+        // Continue even if this fails, as it's not critical
+    } else {
+        info!("Service recovery options configured successfully");
+    }
 
     info!("Service installed successfully");
     Ok(())
