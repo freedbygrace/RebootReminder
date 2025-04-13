@@ -12,10 +12,11 @@ A reboot reminder system that runs as a Windows service and provides customizabl
 - Detects when reboots are necessary using multiple methods with native Windows API calls
 - Stores state using embedded database
 - Comprehensive logging with rotation and detailed database operations
-- Customizable reboot reminder timeframes and deferral options with flexible timespan format (e.g., "30m", "2h")
+- Customizable reboot reminder timeframes and deferral options with flexible timespan format (e.g., "30s", "30m", "2h")
 - Supports quiet hours
 - Supports Windows environment variables in configuration paths
-- Flexible timespan format for reminder intervals and deferrals
+- Flexible timespan format for reminder intervals, deferrals, and countdown timers
+- Granular notification control with individual flags for toast, tray, and balloon notifications
 - Optional watchdog service for improved reliability
 - Detailed tracking of how long a reboot has been required
 - Enhanced logging for configuration loading and reboot detection
@@ -94,7 +95,9 @@ Example configuration:
     "configRefreshMinutes": 60
   },
   "notification": {
-    "type": "both",
+    "showToast": true,
+    "showTray": true,
+    "showBalloon": false,
     "branding": {
       "title": "Reboot Reminder",
       "iconPath": "icon.ico", // Path to the application icon
@@ -108,22 +111,29 @@ Example configuration:
     }
   },
   "reboot": {
+    "systemReboot": {
+      "enabled": true,
+      "countdown": "30s",
+      "showConfirmation": true,
+      "confirmationMessage": "The system needs to restart. Do you want to restart now?",
+      "confirmationTitle": "System Restart Required"
+    },
     "timeframes": [
       {
-        "minHours": 24,
-        "maxHours": 48,
+        "min": "24h",
+        "max": "48h",
         "reminderInterval": "4h",
         "deferrals": ["1h", "4h", "8h", "24h"]
       },
       {
-        "minHours": 49,
-        "maxHours": 72,
+        "min": "49h",
+        "max": "72h",
         "reminderInterval": "2h",
         "deferrals": ["1h", "2h", "4h"]
       },
       {
-        "minHours": 73,
-        "maxHours": null,
+        "min": "73h",
+        "max": null,
         "reminderInterval": "30m",
         "deferrals": ["30m", "1h"]
       }
@@ -146,7 +156,8 @@ Example configuration:
   },
   "watchdog": {
     "enabled": true,
-    "checkIntervalSeconds": 60,
+    "checkInterval": "1m",
+    "restartDelay": "10s",
     "maxRestartAttempts": 3,
     "restartDelaySeconds": 10,
     "servicePath": "",

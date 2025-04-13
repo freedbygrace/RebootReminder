@@ -224,7 +224,12 @@ The `notification` section configures the notification system:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `type` | The type of notifications to show (`"tray"`, `"toast"`, or `"both"`) | `"both"` |
+| `showToast` | Whether to show toast notifications | `true` |
+| `showTray` | Whether to show tray notifications | `true` |
+| `showBalloon` | Whether to show balloon notifications | `false` |
+| `type` | (Legacy) The type of notifications to show (`"tray"`, `"toast"`, or `"both"`) | `"both"` |
+
+**Note:** The individual boolean flags (`showToast`, `showTray`, `showBalloon`) take precedence over the legacy `type` field. It is recommended to use these flags instead of the `type` field for more granular control over notification types.
 
 #### Branding
 
@@ -275,12 +280,16 @@ The `timeframes` array configures how often to show notifications based on how l
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `minHours` | The minimum hours since a reboot was required | - |
-| `maxHours` | The maximum hours since a reboot was required (optional) | - |
-| `reminderInterval` | How often to show reminders (e.g., "4h", "30m") | - |
+| `min` | Minimum time since reboot required as a timespan string (e.g., "24h") | - |
+| `max` | Maximum time since reboot required as a timespan string (e.g., "48h") | - |
+| `minHours` | (Legacy) The minimum hours since a reboot was required | - |
+| `maxHours` | (Legacy) The maximum hours since a reboot was required (optional) | - |
+| `reminderInterval` | How often to show reminders as a timespan string (e.g., "4h", "30m") | - |
 | `reminderIntervalHours` | (Legacy) How often to show reminders (in hours) | - |
 | `reminderIntervalMinutes` | (Legacy) How often to show reminders (in minutes) | - |
-| `deferrals` | Available deferral options (e.g., "1h", "30m") | - |
+| `deferrals` | Available deferral options as timespan strings (e.g., "1h", "30m") | - |
+
+**Note:** The timespan properties (`min`, `max`, `reminderInterval`) take precedence over the legacy hour/minute properties.
 
 #### Timespan Format
 
@@ -288,11 +297,14 @@ The application supports a flexible timespan format for reminder intervals and d
 
 - `h`: hours
 - `m`: minutes
+- `s`: seconds
 
 Examples:
+- `"30s"`: 30 seconds
 - `"30m"`: 30 minutes
 - `"2h"`: 2 hours
 - `"1h30m"`: 1 hour and 30 minutes
+- `"1h30m15s"`: 1 hour, 30 minutes, and 15 seconds
 
 The new `reminderInterval` property uses this format and is the recommended way to specify reminder intervals. The legacy `reminderIntervalHours` and `reminderIntervalMinutes` properties are still supported for backward compatibility.
 
@@ -311,6 +323,21 @@ The `detectionMethods` subsection configures which methods are used to detect if
 | `sccm` | Check SCCM for pending reboots | `true` |
 | `registry` | Check registry for pending reboots | `true` |
 | `pendingFileOperations` | Check for pending file operations | `true` |
+
+#### System Reboot Configuration
+
+The `systemReboot` subsection configures the system reboot behavior when users initiate a restart from notifications:
+
+| Option | Description | Default |
+|--------|-------------|----------|
+| `enabled` | Whether to allow users to initiate system reboots | `true` |
+| `countdown` | Countdown duration before reboot (e.g., "30s", "1m") | `"30s"` |
+| `countdownSeconds` | (Legacy) Countdown duration in seconds before reboot | `30` |
+| `showConfirmation` | Whether to show a confirmation dialog | `true` |
+| `confirmationMessage` | The confirmation message | `"The system needs to restart. Do you want to restart now?"` |
+| `confirmationTitle` | The confirmation dialog title | `"System Restart Required"` |
+
+**Note:** The `countdown` property uses the timespan format and takes precedence over the legacy `countdownSeconds` property.
 
 ### Database Configuration
 
