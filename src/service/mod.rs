@@ -844,6 +844,24 @@ fn run_service() -> Result<()> {
             // If we're not running as a service, we can continue without the service control handler
             if !unsafe { RUNNING_AS_SERVICE } {
                 info!("Not running as a service, continuing without service control handler");
+                // When not running as a service, we don't need a status handle
+                // Just continue with the main service loop
+
+                // Wait for service to stop
+                while unsafe { SERVICE_RUNNING } {
+                    thread::sleep(time::Duration::from_secs(1));
+                }
+
+                // Wait for threads to finish
+                config_refresh_thread
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("Failed to join configuration refresh thread"))?;
+
+                reboot_check_thread
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("Failed to join reboot check thread"))?;
+
+                info!("Service stopped");
                 return Ok(());
             }
             return Err(anyhow::anyhow!("Failed to register service control handler: {}", e));
