@@ -411,11 +411,45 @@ fn run_service() -> Result<()> {
     // Create and start watchdog if enabled
     if config.watchdog.enabled {
         info!("Initializing watchdog service");
+        // Get check interval from either timespan or legacy field
+        let check_interval_seconds = if let Some(check_interval) = &config.watchdog.check_interval {
+            // Parse the timespan string
+            match crate::utils::timespan::parse_timespan(check_interval) {
+                Ok(duration) => duration.as_secs(),
+                Err(e) => {
+                    warn!("Failed to parse check interval timespan: {}", e);
+                    // Fall back to the legacy value or default
+                    config.watchdog.check_interval_seconds.unwrap_or(60)
+                }
+            }
+        } else {
+            // Use the legacy value or default
+            config.watchdog.check_interval_seconds.unwrap_or(60)
+        };
+
+        // Get restart delay from either timespan or legacy field
+        let restart_delay_seconds = if let Some(restart_delay) = &config.watchdog.restart_delay {
+            // Parse the timespan string
+            match crate::utils::timespan::parse_timespan(restart_delay) {
+                Ok(duration) => duration.as_secs(),
+                Err(e) => {
+                    warn!("Failed to parse restart delay timespan: {}", e);
+                    // Fall back to the legacy value or default
+                    config.watchdog.restart_delay_seconds.unwrap_or(10)
+                }
+            }
+        } else {
+            // Use the legacy value or default
+            config.watchdog.restart_delay_seconds.unwrap_or(10)
+        };
+
         let mut watchdog_config = crate::watchdog::WatchdogConfig {
             enabled: config.watchdog.enabled,
-            check_interval_seconds: config.watchdog.check_interval_seconds,
+            check_interval_seconds: check_interval_seconds,
+            check_interval: config.watchdog.check_interval.clone(),
             max_restart_attempts: config.watchdog.max_restart_attempts,
-            restart_delay_seconds: config.watchdog.restart_delay_seconds,
+            restart_delay_seconds: restart_delay_seconds,
+            restart_delay: config.watchdog.restart_delay.clone(),
             service_path: PathBuf::from(config.watchdog.service_path.clone()),
             service_name: config.watchdog.service_name.clone(),
             power_checker: None,
@@ -527,7 +561,17 @@ fn run_service() -> Result<()> {
 
                 // Check if it's time to check if a reboot is required
                 let now = Utc::now();
-                if now - last_check >= Duration::minutes(config.reboot.timeframes[0].min_hours as i64 * 60) {
+                // Get min hours from the first timeframe
+                let min_hours = if let Some(min_timespan) = &config.reboot.timeframes[0].min_timespan {
+                    match crate::utils::timespan::parse_timespan(min_timespan) {
+                        Ok(duration) => (duration.as_secs() / 3600) as i64,
+                        Err(_) => config.reboot.timeframes[0].min_hours.unwrap_or(24) as i64
+                    }
+                } else {
+                    config.reboot.timeframes[0].min_hours.unwrap_or(24) as i64
+                };
+
+                if now - last_check >= Duration::minutes(min_hours * 60) {
                     debug!("Checking if a reboot is required");
 
                     // Create detector with current configuration
@@ -737,7 +781,10 @@ mod tests {
                 config_refresh_minutes: 60,
             },
             notification: NotificationConfig {
-                notification_type: NotificationType::Both,
+                notification_type: Some(NotificationType::Both),
+                show_toast: true,
+                show_tray: true,
+                show_balloon: false,
                 branding: BrandingConfig {
                     title: "Test Title".to_string(),
                     icon_path: icon_path,
@@ -762,9 +809,11 @@ mod tests {
             },
             watchdog: WatchdogConfig {
                 enabled: true,
-                check_interval_seconds: 60,
+                check_interval_seconds: Some(60),
+                check_interval: Some("1m".to_string()),
                 max_restart_attempts: 3,
-                restart_delay_seconds: 10,
+                restart_delay_seconds: Some(10),
+                restart_delay: Some("10s".to_string()),
                 service_path: "".to_string(),
                 service_name: "TestService".to_string(),
             },

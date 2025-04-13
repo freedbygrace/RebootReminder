@@ -1,7 +1,7 @@
 pub mod toast;
 mod tray;
 
-use crate::config::{Config, NotificationConfig, NotificationType, SystemRebootConfig};
+use crate::config::{Config, NotificationConfig, SystemRebootConfig};
 use crate::database::{DbPool, Notification, NotificationInteraction, UserSession};
 use crate::impersonation::Impersonator;
 use crate::service;
@@ -42,10 +42,7 @@ impl NotificationManager {
         debug!("Initializing notification manager");
 
         // Initialize tray if needed and not running as a service
-        if (self.config.notification_type == NotificationType::Tray
-            || self.config.notification_type == NotificationType::Both)
-            && !service::is_running_as_service()
-        {
+        if self.config.show_tray && !service::is_running_as_service() {
             debug!("Initializing tray manager");
             let icon_path = self.resolve_icon_path(&self.config.branding.icon_path)?;
             match tray::TrayManager::new(
@@ -134,25 +131,21 @@ impl NotificationManager {
             }
         };
 
-        // Show notification based on type
-        match self.config.notification_type {
-            NotificationType::Tray => {
-                self.show_tray_notification(&notification, &sessions[0])?;
-            }
-            NotificationType::Toast => {
-                self.show_toast_notification(&notification, &sessions[0])?;
-            }
-            NotificationType::Both => {
-                // Show both types
-                if let Err(e) = self.show_tray_notification(&notification, &sessions[0]) {
-                    warn!("Failed to show tray notification: {}", e);
-                }
-
-                if let Err(e) = self.show_toast_notification(&notification, &sessions[0]) {
-                    warn!("Failed to show toast notification: {}", e);
-                }
+        // Show notifications based on configuration
+        if self.config.show_tray {
+            if let Err(e) = self.show_tray_notification(&notification, &sessions[0]) {
+                warn!("Failed to show tray notification: {}", e);
             }
         }
+
+        if self.config.show_toast {
+            if let Err(e) = self.show_toast_notification(&notification, &sessions[0]) {
+                warn!("Failed to show toast notification: {}", e);
+            }
+        }
+
+        // Balloon notifications are handled by the tray manager
+        // and are currently not implemented separately
 
         info!("Notification successfully shown to user: {}", sessions[0].user_name);
         info!("Notification content: {}", message);
@@ -261,8 +254,23 @@ impl NotificationManager {
         info!("Reboot type: {}", reboot_type);
 
         // Create reboot configuration
+        let countdown_seconds = if let Some(countdown) = &self.system_reboot_config.countdown {
+            // Parse the timespan string
+            match crate::utils::timespan::parse_timespan(countdown) {
+                Ok(duration) => duration.as_secs() as u32,
+                Err(e) => {
+                    warn!("Failed to parse countdown timespan: {}", e);
+                    // Fall back to the legacy value or default
+                    self.system_reboot_config.countdown_seconds.unwrap_or(30)
+                }
+            }
+        } else {
+            // Use the legacy value or default
+            self.system_reboot_config.countdown_seconds.unwrap_or(30)
+        };
+
         let reboot_config = crate::reboot::system::RebootConfig {
-            countdown_seconds: self.system_reboot_config.countdown_seconds,
+            countdown_seconds: countdown_seconds,
             show_confirmation: self.system_reboot_config.show_confirmation,
             confirmation_message: self.system_reboot_config.confirmation_message.clone(),
             confirmation_title: self.system_reboot_config.confirmation_title.clone(),

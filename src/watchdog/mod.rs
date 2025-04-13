@@ -21,11 +21,17 @@ pub struct WatchdogConfig {
     /// Interval in seconds between health checks
     pub check_interval_seconds: u64,
 
+    /// Check interval as a timespan string (e.g., "5m")
+    pub check_interval: Option<String>,
+
     /// Maximum number of restart attempts
     pub max_restart_attempts: u32,
 
     /// Delay in seconds between restart attempts
     pub restart_delay_seconds: u64,
+
+    /// Restart delay as a timespan string (e.g., "30s")
+    pub restart_delay: Option<String>,
 
     /// Path to the main service executable
     pub service_path: PathBuf,
@@ -43,8 +49,10 @@ impl Clone for WatchdogConfig {
         Self {
             enabled: self.enabled,
             check_interval_seconds: self.check_interval_seconds,
+            check_interval: self.check_interval.clone(),
             max_restart_attempts: self.max_restart_attempts,
             restart_delay_seconds: self.restart_delay_seconds,
+            restart_delay: self.restart_delay.clone(),
             service_path: self.service_path.clone(),
             service_name: self.service_name.clone(),
             power_checker: None, // Don't clone the power checker
@@ -57,8 +65,10 @@ impl Default for WatchdogConfig {
         Self {
             enabled: true,
             check_interval_seconds: 60,
+            check_interval: Some("1m".to_string()),
             max_restart_attempts: 3,
             restart_delay_seconds: 10,
+            restart_delay: Some("10s".to_string()),
             service_path: PathBuf::new(),
             service_name: "RebootReminder".to_string(),
             power_checker: None,

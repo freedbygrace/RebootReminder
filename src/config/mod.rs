@@ -163,7 +163,10 @@ pub fn default() -> Config {
             config_refresh_minutes: 60,
         },
         notification: NotificationConfig {
-            notification_type: NotificationType::Both,
+            notification_type: Some(NotificationType::Both),
+            show_toast: true,
+            show_tray: true,
+            show_balloon: false,
             branding: BrandingConfig {
                 title: "Reboot Reminder".to_string(),
                 icon_path: "icon.ico".to_string(),
@@ -192,24 +195,30 @@ pub fn default() -> Config {
         reboot: RebootConfig {
             timeframes: vec![
                 TimeframeConfig {
-                    min_hours: 24,
+                    min_hours: Some(24),
                     max_hours: Some(48),
+                    min_timespan: Some("24h".to_string()),
+                    max_timespan: Some("48h".to_string()),
                     reminder_interval_hours: Some(4),
                     reminder_interval_minutes: None,
                     reminder_interval: Some("4h".to_string()),
                     deferrals: vec!["1h".to_string(), "4h".to_string(), "8h".to_string(), "24h".to_string()],
                 },
                 TimeframeConfig {
-                    min_hours: 49,
+                    min_hours: Some(49),
                     max_hours: Some(72),
+                    min_timespan: Some("49h".to_string()),
+                    max_timespan: Some("72h".to_string()),
                     reminder_interval_hours: Some(2),
                     reminder_interval_minutes: None,
                     reminder_interval: Some("2h".to_string()),
                     deferrals: vec!["1h".to_string(), "2h".to_string(), "4h".to_string()],
                 },
                 TimeframeConfig {
-                    min_hours: 73,
+                    min_hours: Some(73),
                     max_hours: None,
+                    min_timespan: Some("73h".to_string()),
+                    max_timespan: None,
                     reminder_interval_hours: None,
                     reminder_interval_minutes: Some(30),
                     reminder_interval: Some("30m".to_string()),
@@ -255,8 +264,23 @@ fn format_config_summary(config: &Config) -> String {
 
     // First timeframe info
     if let Some(first_timeframe) = config.reboot.timeframes.first() {
-        summary.push_str(&format!("First timeframe: {}h-", first_timeframe.min_hours));
-        if let Some(max_hours) = first_timeframe.max_hours {
+        summary.push_str("First timeframe: ");
+
+        // Get min from either timespan or hours
+        if let Some(min_timespan) = &first_timeframe.min_timespan {
+            summary.push_str(min_timespan);
+        } else if let Some(min_hours) = first_timeframe.min_hours {
+            summary.push_str(&format!("{}h", min_hours));
+        } else {
+            summary.push_str("0h");
+        }
+
+        summary.push_str("-");
+
+        // Get max from either timespan or hours
+        if let Some(max_timespan) = &first_timeframe.max_timespan {
+            summary.push_str(max_timespan);
+        } else if let Some(max_hours) = first_timeframe.max_hours {
             summary.push_str(&format!("{}", max_hours));
         } else {
             summary.push_str("∞");
@@ -337,13 +361,26 @@ fn log_config_details(config: &Config) {
     info!("  Timeframes: {} defined", config.reboot.timeframes.len());
     for (i, timeframe) in config.reboot.timeframes.iter().enumerate() {
         info!("  Timeframe #{}:", i + 1);
-        info!("    Min Hours: {}", timeframe.min_hours);
-        if let Some(max_hours) = timeframe.max_hours {
+
+        // Log min hours/timespan
+        if let Some(min_timespan) = &timeframe.min_timespan {
+            info!("    Min: {}", min_timespan);
+        } else if let Some(min_hours) = timeframe.min_hours {
+            info!("    Min Hours: {}", min_hours);
+        } else {
+            info!("    Min Hours: None (default)");
+        }
+
+        // Log max hours/timespan
+        if let Some(max_timespan) = &timeframe.max_timespan {
+            info!("    Max: {}", max_timespan);
+        } else if let Some(max_hours) = timeframe.max_hours {
             info!("    Max Hours: {}", max_hours);
         } else {
             info!("    Max Hours: None (unlimited)");
         }
 
+        // Log reminder interval
         if let Some(interval) = &timeframe.reminder_interval {
             info!("    Reminder Interval: {}", interval);
         } else if let Some(hours) = timeframe.reminder_interval_hours {
@@ -365,7 +402,16 @@ fn log_config_details(config: &Config) {
     // System Reboot
     info!("  System Reboot:");
     info!("    Enabled: {}", config.reboot.system_reboot.enabled);
-    info!("    Countdown Seconds: {}", config.reboot.system_reboot.countdown_seconds);
+
+    // Log countdown
+    if let Some(countdown) = &config.reboot.system_reboot.countdown {
+        info!("    Countdown: {}", countdown);
+    } else if let Some(seconds) = config.reboot.system_reboot.countdown_seconds {
+        info!("    Countdown Seconds: {}", seconds);
+    } else {
+        info!("    Countdown: None (default)");
+    }
+
     info!("    Show Confirmation: {}", config.reboot.system_reboot.show_confirmation);
     info!("    Confirmation Message: {}", config.reboot.system_reboot.confirmation_message);
     info!("    Confirmation Title: {}", config.reboot.system_reboot.confirmation_title);
@@ -384,9 +430,27 @@ fn log_config_details(config: &Config) {
     // Watchdog configuration
     info!("Watchdog Configuration:");
     info!("  Enabled: {}", config.watchdog.enabled);
-    info!("  Check Interval: {} seconds", config.watchdog.check_interval_seconds);
+
+    // Log check interval
+    if let Some(check_interval) = &config.watchdog.check_interval {
+        info!("  Check Interval: {}", check_interval);
+    } else if let Some(seconds) = config.watchdog.check_interval_seconds {
+        info!("  Check Interval: {} seconds", seconds);
+    } else {
+        info!("  Check Interval: None (default)");
+    }
+
     info!("  Max Restart Attempts: {}", config.watchdog.max_restart_attempts);
-    info!("  Restart Delay: {} seconds", config.watchdog.restart_delay_seconds);
+
+    // Log restart delay
+    if let Some(restart_delay) = &config.watchdog.restart_delay {
+        info!("  Restart Delay: {}", restart_delay);
+    } else if let Some(seconds) = config.watchdog.restart_delay_seconds {
+        info!("  Restart Delay: {} seconds", seconds);
+    } else {
+        info!("  Restart Delay: None (default)");
+    }
+
     info!("  Service Path: {}", config.watchdog.service_path);
     info!("  Service Name: {}", config.watchdog.service_name);
 }
@@ -444,15 +508,53 @@ fn validate_config(config: &Config) -> Result<()> {
         return Err(anyhow::anyhow!("At least one reboot timeframe must be defined"));
     }
     for (i, timeframe) in config.reboot.timeframes.iter().enumerate() {
-        if timeframe.min_hours >= timeframe.max_hours.unwrap_or(u32::MAX) {
+        // Get min hours from either timespan or legacy field
+        let min_hours = if let Some(min_timespan) = &timeframe.min_timespan {
+            match crate::utils::timespan::parse_timespan(min_timespan) {
+                Ok(duration) => (duration.as_secs() / 3600) as u32, // Convert seconds to hours
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Timeframe {}: Invalid min timespan '{}': {}",
+                        i, min_timespan, e
+                    ));
+                }
+            }
+        } else if let Some(hours) = timeframe.min_hours {
+            hours
+        } else {
+            0 // Default to 0 if neither is specified
+        };
+
+        // Get max hours from either timespan or legacy field
+        let max_hours = if let Some(max_timespan) = &timeframe.max_timespan {
+            match crate::utils::timespan::parse_timespan(max_timespan) {
+                Ok(duration) => (duration.as_secs() / 3600) as u32, // Convert seconds to hours
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Timeframe {}: Invalid max timespan '{}': {}",
+                        i, max_timespan, e
+                    ));
+                }
+            }
+        } else if let Some(hours) = timeframe.max_hours {
+            hours
+        } else {
+            u32::MAX // Default to max if neither is specified
+        };
+
+        if min_hours >= max_hours {
             return Err(anyhow::anyhow!(
-                "Timeframe {}: min_hours must be less than max_hours",
+                "Timeframe {}: min must be less than max",
                 i
             ));
         }
-        if timeframe.reminder_interval_hours.is_none() && timeframe.reminder_interval_minutes.is_none() {
+
+        // Check if any reminder interval is specified
+        if timeframe.reminder_interval.is_none() &&
+           timeframe.reminder_interval_hours.is_none() &&
+           timeframe.reminder_interval_minutes.is_none() {
             return Err(anyhow::anyhow!(
-                "Timeframe {}: Either reminder_interval_hours or reminder_interval_minutes must be specified",
+                "Timeframe {}: A reminder interval must be specified",
                 i
             ));
         }
@@ -607,7 +709,10 @@ mod tests {
                 config_refresh_minutes: 60,
             },
             notification: NotificationConfig {
-                notification_type: NotificationType::Both,
+                notification_type: Some(NotificationType::Both),
+                show_toast: true,
+                show_tray: true,
+                show_balloon: false,
                 branding: BrandingConfig {
                     title: "Test Title".to_string(),
                     icon_path: "%WINDIR%\\System32\\test.ico".to_string(),
@@ -632,9 +737,11 @@ mod tests {
             },
             watchdog: WatchdogConfig {
                 enabled: true,
-                check_interval_seconds: 60,
+                check_interval_seconds: Some(60),
+                check_interval: Some("1m".to_string()),
                 max_restart_attempts: 3,
-                restart_delay_seconds: 10,
+                restart_delay_seconds: Some(10),
+                restart_delay: Some("10s".to_string()),
                 service_path: "%PROGRAMFILES%\\TestApp\\test.exe".to_string(),
                 service_name: "TestService".to_string(),
             },

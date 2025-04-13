@@ -7,7 +7,7 @@ use crate::database::RebootState;
 use crate::utils::timespan;
 use anyhow::Result;
 use chrono::Duration;
-// No logging imports needed
+use log::warn;
 use chrono::{DateTime, Utc};
 
 /// Get the appropriate timeframe for a reboot state
@@ -29,8 +29,37 @@ pub fn get_timeframe<'a>(config: &'a RebootConfig, state: &RebootState) -> Optio
 
     // Find the appropriate timeframe
     for timeframe in &config.timeframes {
-        let min_hours = timeframe.min_hours;
-        let max_hours = timeframe.max_hours.unwrap_or(u32::MAX);
+        // Get min hours from either the timespan or legacy field
+        let min_hours = if let Some(min_timespan) = &timeframe.min_timespan {
+            // Parse the timespan string
+            match timespan::parse_timespan(min_timespan) {
+                Ok(duration) => (duration.as_secs() / 3600) as u32, // Convert seconds to hours
+                Err(e) => {
+                    warn!("Failed to parse min timespan: {}", e);
+                    // Fall back to the legacy value or default
+                    timeframe.min_hours.unwrap_or(0)
+                }
+            }
+        } else {
+            // Use the legacy value or default
+            timeframe.min_hours.unwrap_or(0)
+        };
+
+        // Get max hours from either the timespan or legacy field
+        let max_hours = if let Some(max_timespan) = &timeframe.max_timespan {
+            // Parse the timespan string
+            match timespan::parse_timespan(max_timespan) {
+                Ok(duration) => (duration.as_secs() / 3600) as u32, // Convert seconds to hours
+                Err(e) => {
+                    warn!("Failed to parse max timespan: {}", e);
+                    // Fall back to the legacy value or default
+                    timeframe.max_hours.unwrap_or(u32::MAX)
+                }
+            }
+        } else {
+            // Use the legacy value or default
+            timeframe.max_hours.unwrap_or(u32::MAX)
+        };
 
         if hours_since_required >= min_hours && hours_since_required < max_hours {
             return Some(timeframe);
