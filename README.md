@@ -5,7 +5,6 @@ A cross-platform reboot reminder system that runs as a Windows service and provi
 ## Features
 
 - Runs as a Windows service under NTAUTHORITY/System
-- Uses passwordless user impersonation to interact with interactive user sessions
 - Displays notifications only when interactive console or RDP user sessions are present
 - Customizable notifications via JSON or XML configuration files
 - Supports both tray and toast notifications
