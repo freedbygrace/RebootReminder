@@ -51,10 +51,12 @@ The configuration file can be in either JSON or XML format. The application auto
     "configRefreshMinutes": 60
   },
   "notification": {
-    "type": "both",
+    "showToast": true,
+    "showTray": true,
+    "showBalloon": false,
     "branding": {
       "title": "Reboot Reminder",
-      "iconPath": "icon.ico",
+      "iconPath": "%PROGRAMDATA%\\RebootReminder\\icon.ico",
       "company": "IT Department"
     },
     "messages": {
@@ -78,21 +80,29 @@ The configuration file can be in either JSON or XML format. The application auto
     }
   },
   "reboot": {
+    "systemReboot": {
+      "enabled": true,
+      "countdown": "30s",
+      "showConfirmation": true,
+      "confirmationMessage": "The system needs to restart. Do you want to restart now?",
+      "confirmationTitle": "System Restart Required"
+    },
     "timeframes": [
       {
-        "minHours": 24,
-        "maxHours": 48,
+        "min": "24h",
+        "max": "48h",
         "reminderInterval": "4h",
         "deferrals": ["1h", "4h", "8h", "24h"]
       },
       {
-        "minHours": 49,
-        "maxHours": 72,
+        "min": "49h",
+        "max": "72h",
         "reminderInterval": "2h",
         "deferrals": ["1h", "2h", "4h"]
       },
       {
-        "minHours": 73,
+        "min": "73h",
+        "max": null,
         "reminderInterval": "30m",
         "deferrals": ["30m", "1h"]
       }
@@ -105,13 +115,20 @@ The configuration file can be in either JSON or XML format. The application auto
     }
   },
   "database": {
-    "path": "rebootreminder.db"
+    "path": "%PROGRAMDATA%\\RebootReminder\\reboot_reminder.db"
   },
   "logging": {
-    "path": "logs/rebootreminder.log",
+    "path": "%PROGRAMDATA%\\RebootReminder\\logs\\reboot_reminder.log",
     "level": "info",
     "maxFiles": 7,
     "maxSize": 10
+  },
+  "watchdog": {
+    "enabled": true,
+    "checkInterval": "5m",
+    "maxRestartAttempts": 3,
+    "restartDelay": "30s",
+    "serviceName": "RebootReminder"
   }
 }
 ```
@@ -122,16 +139,18 @@ The configuration file can be in either JSON or XML format. The application auto
 <?xml version="1.0" encoding="UTF-8"?>
 <config>
   <service>
-    <name>RebootReminder</name>
+    <n>RebootReminder</n>
     <displayName>Reboot Reminder Service</displayName>
     <description>Provides notifications when system reboots are necessary</description>
     <configRefreshMinutes>60</configRefreshMinutes>
   </service>
   <notification>
-    <type>both</type>
+    <showToast>true</showToast>
+    <showTray>true</showTray>
+    <showBalloon>false</showBalloon>
     <branding>
       <title>Reboot Reminder</title>
-      <iconPath>icon.ico</iconPath>
+      <iconPath>%PROGRAMDATA%\RebootReminder\icon.ico</iconPath>
       <company>IT Department</company>
     </branding>
     <messages>
@@ -161,10 +180,17 @@ The configuration file can be in either JSON or XML format. The application auto
     </quietHours>
   </notification>
   <reboot>
+    <systemReboot>
+      <enabled>true</enabled>
+      <countdown>30s</countdown>
+      <showConfirmation>true</showConfirmation>
+      <confirmationMessage>The system needs to restart. Do you want to restart now?</confirmationMessage>
+      <confirmationTitle>System Restart Required</confirmationTitle>
+    </systemReboot>
     <timeframes>
       <timeframes>
-        <minHours>24</minHours>
-        <maxHours>48</maxHours>
+        <min>24h</min>
+        <max>48h</max>
         <reminderInterval>4h</reminderInterval>
         <deferrals>1h</deferrals>
         <deferrals>4h</deferrals>
@@ -172,15 +198,16 @@ The configuration file can be in either JSON or XML format. The application auto
         <deferrals>24h</deferrals>
       </timeframes>
       <timeframes>
-        <minHours>49</minHours>
-        <maxHours>72</maxHours>
+        <min>49h</min>
+        <max>72h</max>
         <reminderInterval>2h</reminderInterval>
         <deferrals>1h</deferrals>
         <deferrals>2h</deferrals>
         <deferrals>4h</deferrals>
       </timeframes>
       <timeframes>
-        <minHours>73</minHours>
+        <min>73h</min>
+        <max></max>
         <reminderInterval>30m</reminderInterval>
         <deferrals>30m</deferrals>
         <deferrals>1h</deferrals>
@@ -194,14 +221,21 @@ The configuration file can be in either JSON or XML format. The application auto
     </detectionMethods>
   </reboot>
   <database>
-    <path>rebootreminder.db</path>
+    <path>%PROGRAMDATA%\RebootReminder\reboot_reminder.db</path>
   </database>
   <logging>
-    <path>logs/rebootreminder.log</path>
+    <path>%PROGRAMDATA%\RebootReminder\logs\reboot_reminder.log</path>
     <level>info</level>
     <maxFiles>7</maxFiles>
     <maxSize>10</maxSize>
   </logging>
+  <watchdog>
+    <enabled>true</enabled>
+    <checkInterval>5m</checkInterval>
+    <maxRestartAttempts>3</maxRestartAttempts>
+    <restartDelay>30s</restartDelay>
+    <serviceName>RebootReminder</serviceName>
+  </watchdog>
 </config>
 ```
 
