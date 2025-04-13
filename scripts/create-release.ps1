@@ -37,6 +37,7 @@ if ($versionMatch.Success) {
 
     # Reconstruct version
     $version = "v${year}.${month}.${day}-${time}"
+    $versionWithoutV = "${year}.${month}.${day}-${time}"
     Write-Host "Normalized version: $version" -ForegroundColor Green
 }
 
@@ -66,6 +67,15 @@ if ($cargoVersionMatch.Success) {
             $cargoContent = $cargoContent -replace 'version\s*=\s*"[\d\.\-]+"', "version = `"$versionWithoutV`""
             Set-Content -Path $cargoTomlPath -Value $cargoContent
             Write-Host "Updated Cargo.toml version to $versionWithoutV" -ForegroundColor Green
+
+            # Rebuild the project to apply the new version
+            Write-Host "Rebuilding project with updated version..." -ForegroundColor Yellow
+            & (Join-Path $repoRoot "build.bat")
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Rebuild failed after version update. Please check the output for errors." -ForegroundColor Red
+                exit 1
+            }
         } else {
             Write-Host "Continuing with version mismatch. This may cause issues." -ForegroundColor Yellow
         }
