@@ -44,7 +44,7 @@ if (-not (Test-Path (Join-Path $releaseDir "reboot_reminder.exe"))) {
 
 Copy-Item -Path (Join-Path $releaseDir "reboot_reminder.exe") -Destination $executablePath -Force
 Copy-Item -Path (Join-Path $sourceDir "config\config.json") -Destination $configPath -Force
-Copy-Item -Path (Join-Path $sourceDir "resources\icons\app_icon.ico") -Destination (Join-Path $installDir "icon.ico") -Force
+Copy-Item -Path (Join-Path $sourceDir "resources\icons\icon.ico") -Destination (Join-Path $installDir "icon.ico") -Force
 
 # Create logs directory
 $logsDir = Join-Path $installDir "logs"

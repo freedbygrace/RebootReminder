@@ -6,11 +6,11 @@ fn main() {
     // Only run the resource embedding on Windows
     if env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
         // Embed the application icon
-        let icon_path = Path::new("resources/icons/app_icon.ico");
+        let icon_path = Path::new("resources/icons/icon.ico");
         if icon_path.exists() {
             // Use winres for icon and version information
             let mut res = winres::WindowsResource::new();
-            res.set_icon("resources/icons/app_icon.ico");
+            res.set_icon("resources/icons/icon.ico");
             res.set_language(0x0409); // English (United States)
 
             // Set version information

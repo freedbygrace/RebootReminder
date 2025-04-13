@@ -2,7 +2,7 @@
 #include "winres.h"
 
 // Application icon
-1 ICON "icons/app_icon.ico"
+1 ICON "icons/icon.ico"
 
 // Version information
 VS_VERSION_INFO VERSIONINFO
