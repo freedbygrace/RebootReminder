@@ -1,0 +1,238 @@
+use crate::database::UserSession;
+use anyhow::Result;
+use log::{debug, warn};
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+use std::ptr;
+use windows::Win32::System::RemoteDesktop::WTSEnumerateSessionsW;
+use windows::Win32::System::RemoteDesktop::WTSFreeMemory;
+use windows::Win32::System::RemoteDesktop::WTSQuerySessionInformationW;
+use windows::Win32::System::RemoteDesktop::WTSUserName;
+use windows::Win32::System::RemoteDesktop::WTS_CURRENT_SERVER_HANDLE;
+use windows::Win32::System::RemoteDesktop::WTS_SESSION_INFOW;
+use windows::Win32::System::RemoteDesktop::WTSActive;
+use windows::Win32::System::RemoteDesktop::WTSConnected;
+use windows::Win32::System::Services::{OpenServiceW, SERVICE_QUERY_STATUS, CloseServiceHandle, OpenSCManagerW, SC_MANAGER_CONNECT};
+use windows::core::{PCWSTR, PWSTR};
+
+/// User impersonator
+pub struct Impersonator {
+    // Add any necessary fields here
+}
+
+impl Impersonator {
+    /// Create a new impersonator
+    pub fn new() -> Self {
+        Self {}
+    }
+    
+    /// Get all active user sessions
+    pub fn get_active_sessions(&self) -> Result<Vec<UserSession>> {
+        let mut sessions = Vec::new();
+        
+        unsafe {
+            let mut session_info_ptr = ptr::null_mut();
+            let mut session_count = 0;
+            
+            // Enumerate all sessions
+            let result = WTSEnumerateSessionsW(
+                Some(WTS_CURRENT_SERVER_HANDLE),
+                0,
+                1,
+                &mut session_info_ptr,
+                &mut session_count,
+            );
+            
+            if let Err(e) = result {
+                let error_code = windows::Win32::Foundation::GetLastError();
+                return Err(anyhow::anyhow!("Failed to enumerate sessions: error code {}", error_code.0));
+            }
+            
+            // Process each session
+            let session_info_array = std::slice::from_raw_parts(
+                session_info_ptr as *const WTS_SESSION_INFOW,
+                session_count as usize,
+            );
+            
+            for session_info in session_info_array {
+                let session_id = session_info.SessionId;
+                
+                // Skip the system session
+                if session_id == 0 {
+                    continue;
+                }
+                
+                // Get session state
+                let mut buffer_ptr: *mut u16 = ptr::null_mut();
+                let mut bytes_returned: u32 = 0;
+                
+                // This is a workaround for the WTSQuerySessionInformationW API
+                let state_result = WTSQuerySessionInformationW(
+                    Some(WTS_CURRENT_SERVER_HANDLE),
+                    session_id,
+                    windows::Win32::System::RemoteDesktop::WTSConnectState,
+                    &mut buffer_ptr as *mut *mut u16 as *mut PWSTR,
+                    &mut bytes_returned,
+                );
+                
+                if let Err(e) = state_result {
+                    let error_code = windows::Win32::Foundation::GetLastError();
+                    warn!("Failed to query session state for session {}: error code {}", session_id, error_code.0);
+                    continue;
+                }
+                
+                if buffer_ptr.is_null() {
+                    warn!("WTSQuerySessionInformationW returned null pointer for session state");
+                    continue;
+                }
+                
+                // Get the state value
+                let state = *(buffer_ptr as *const u32);
+                
+                // Free the buffer
+                WTSFreeMemory(buffer_ptr as *mut _);
+                
+                // Skip disconnected sessions
+                if state != WTSActive.0 as u32 && state != WTSConnected.0 as u32 {
+                    continue;
+                }
+                
+                // Get username
+                buffer_ptr = ptr::null_mut();
+                bytes_returned = 0;
+                let username_result = WTSQuerySessionInformationW(
+                    Some(WTS_CURRENT_SERVER_HANDLE),
+                    session_id,
+                    WTSUserName,
+                    &mut buffer_ptr as *mut *mut u16 as *mut PWSTR,
+                    &mut bytes_returned,
+                );
+                
+                if let Err(e) = username_result {
+                    let error_code = windows::Win32::Foundation::GetLastError();
+                    warn!("Failed to query username for session {}: error code {}", session_id, error_code.0);
+                    continue;
+                }
+                
+                if buffer_ptr.is_null() {
+                    warn!("WTSQuerySessionInformationW returned null pointer for username");
+                    continue;
+                }
+                
+                // Convert username to Rust string
+                let username_ptr = buffer_ptr as *const u16;
+                let len = (0..bytes_returned/2).take_while(|&i| *username_ptr.add(i as usize) != 0).count();
+                let username_slice = std::slice::from_raw_parts(username_ptr, len);
+                let username = OsString::from_wide(username_slice)
+                    .into_string()
+                    .unwrap_or_else(|_| String::from("Unknown"));
+                
+                // Free the buffer
+                WTSFreeMemory(buffer_ptr as *mut _);
+                
+                // Get client name
+                buffer_ptr = ptr::null_mut();
+                bytes_returned = 0;
+                let client_name_result = WTSQuerySessionInformationW(
+                    Some(WTS_CURRENT_SERVER_HANDLE),
+                    session_id,
+                    windows::Win32::System::RemoteDesktop::WTSClientName,
+                    &mut buffer_ptr as *mut *mut u16 as *mut PWSTR,
+                    &mut bytes_returned,
+                );
+                
+                let client_name = if client_name_result.is_ok() && !buffer_ptr.is_null() && bytes_returned > 0 {
+                    let client_name_ptr = buffer_ptr as *const u16;
+                    let len = (0..bytes_returned/2).take_while(|&i| *client_name_ptr.add(i as usize) != 0).count();
+                    let client_name_slice = std::slice::from_raw_parts(client_name_ptr, len);
+                    let client_name = OsString::from_wide(client_name_slice)
+                        .into_string()
+                        .unwrap_or_else(|_| String::from("Unknown"));
+                    
+                    // Free the buffer
+                    WTSFreeMemory(buffer_ptr as *mut _);
+                    
+                    Some(client_name)
+                } else {
+                    if !buffer_ptr.is_null() {
+                        WTSFreeMemory(buffer_ptr as *mut _);
+                    }
+                    None
+                };
+                
+                // Create a new session
+                let session = UserSession::new(
+                    &username,
+                    &session_id.to_string(),
+                    state == WTSConnected.0 as u32,
+                    state == WTSActive.0 as u32
+                );
+                
+                // Update client name if available
+                if let Some(name) = client_name {
+                    let mut session_with_client = session.clone();
+                    session_with_client.client_name = Some(name);
+                    sessions.push(session_with_client);
+                } else {
+                    sessions.push(session);
+                }
+            }
+            
+            // Free the session info array
+            WTSFreeMemory(session_info_ptr as *mut _);
+        }
+        
+        Ok(sessions)
+    }
+    
+    /// Check if SCCM client is installed
+    pub fn is_sccm_client_installed(&self) -> Result<bool> {
+        unsafe {
+            // Open the service control manager
+            let sc_manager = match OpenSCManagerW(
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SC_MANAGER_CONNECT,
+            ) {
+                Ok(handle) => handle,
+                Err(_) => {
+                    return Err(anyhow::anyhow!("Failed to open service control manager"));
+                }
+            };
+            
+            // Try to open the CCMExec service
+            let service_name = "CCMExec\0".encode_utf16().collect::<Vec<u16>>();
+            let service = match OpenServiceW(
+                sc_manager,
+                PCWSTR::from_raw(service_name.as_ptr()),
+                SERVICE_QUERY_STATUS,
+            ) {
+                Ok(handle) => handle,
+                Err(_) => {
+                    // Close the service control manager handle
+                    let _ = CloseServiceHandle(sc_manager);
+                    return Ok(false);
+                }
+            };
+            
+            // Close the service control manager handle
+            let _ = CloseServiceHandle(sc_manager);
+            
+            // Close the service handle
+            let _ = CloseServiceHandle(service);
+            
+            // If we got here, the service exists
+            Ok(true)
+        }
+    }
+    
+    /// Show a toast notification in the user's session
+    pub fn show_toast_notification(&self, session: &UserSession, _notification: &str) -> Result<()> {
+        debug!("Showing toast notification to user {}", session.user_name);
+        
+        // This is a placeholder for the actual implementation
+        // You'll need to implement this based on your notification system
+        
+        Ok(())
+    }
+}

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <general>
+        <debug>false</debug>
+    </general>
+    <database>
+        <path>%PROGRAMDATA%\RebootReminder\reboot_reminder.db</path>
+    </database>
+    <logging>
+        <level>info</level>
+        <path>%PROGRAMDATA%\RebootReminder\logs\reboot_reminder.log</path>
+        <maxSize>10485760</maxSize>
+        <maxFiles>5</maxFiles>
+    </logging>
+    <reboot>
+        <checkIntervalSeconds>300</checkIntervalSeconds>
+        <maxPendingRebootAgeHours>72</maxPendingRebootAgeHours>
+        <checkWindowsUpdates>true</checkWindowsUpdates>
+        <checkPendingFileRenames>true</checkPendingFileRenames>
+        <checkComponentBasedServicing>true</checkComponentBasedServicing>
+        <checkSccmClient>true</checkSccmClient>
+        <checkDomainController>false</checkDomainController>
+        <timeframes>
+            <timeframe>
+                <minHours>24</minHours>
+                <maxHours>48</maxHours>
+                <reminderInterval>4h</reminderInterval>
+                <deferrals>
+                    <deferral>1h</deferral>
+                    <deferral>4h</deferral>
+                    <deferral>8h</deferral>
+                    <deferral>24h</deferral>
+                </deferrals>
+            </timeframe>
+            <timeframe>
+                <minHours>49</minHours>
+                <maxHours>72</maxHours>
+                <reminderInterval>2h</reminderInterval>
+                <deferrals>
+                    <deferral>1h</deferral>
+                    <deferral>2h</deferral>
+                    <deferral>4h</deferral>
+                </deferrals>
+            </timeframe>
+            <timeframe>
+                <minHours>73</minHours>
+                <reminderInterval>30m</reminderInterval>
+                <deferrals>
+                    <deferral>30m</deferral>
+                    <deferral>1h</deferral>
+                </deferrals>
+            </timeframe>
+        </timeframes>
+    </reboot>
+    <notification>
+        <showToast>true</showToast>
+        <showTray>true</showTray>
+        <showBalloon>false</showBalloon>
+    </notification>
+    <branding>
+        <title>Reboot Reminder</title>
+        <iconPath>%PROGRAMFILES%\RebootReminder\icon.ico</iconPath>
+    </branding>
+    <service>
+        <runAsService>true</runAsService>
+        <name>RebootReminder</name>
+        <displayName>Reboot Reminder Service</displayName>
+        <description>Provides notifications when system reboots are necessary</description>
+    </service>
+    <watchdog>
+        <enabled>true</enabled>
+        <checkIntervalSeconds>300</checkIntervalSeconds>
+        <maxDowntimeSeconds>600</maxDowntimeSeconds>
+    </watchdog>
+</configuration>

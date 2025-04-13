@@ -1,0 +1,80 @@
+{
+  "service": {
+    "name": "RebootReminder",
+    "displayName": "Reboot Reminder Service",
+    "description": "Provides notifications when system reboots are necessary",
+    "configRefreshMinutes": 60
+  },
+  "notification": {
+    "type": "both",
+    "branding": {
+      "title": "Reboot Reminder",
+      "iconPath": "%PROGRAMDATA%\\RebootReminder\\icon.ico",
+      "company": "Your Company"
+    },
+    "messages": {
+      "rebootRequired": "A system reboot is required to complete recent updates.",
+      "rebootRecommended": "A system reboot is recommended to improve system performance.",
+      "rebootScheduled": "A system reboot has been scheduled for {time}.",
+      "rebootInProgress": "System reboot in progress...",
+      "rebootCancelled": "Scheduled reboot has been cancelled.",
+      "rebootPostponed": "Reboot has been postponed until {time}.",
+      "rebootCompleted": "System has been successfully rebooted.",
+      "actionRequired": "Reboot Now",
+      "actionRecommended": "Reboot Recommended",
+      "actionNotRequired": "No Reboot Required",
+      "actionNotAvailable": "Reboot Options Unavailable"
+    },
+    "quietHours": {
+      "enabled": true,
+      "startTime": "18:00",
+      "endTime": "08:00",
+      "daysOfWeek": [0, 6]
+    }
+  },
+  "reboot": {
+    "timeframes": [
+      {
+        "minHours": 0,
+        "maxHours": 24,
+        "reminderIntervalHours": 4,
+        "deferrals": ["1h", "4h", "8h"]
+      },
+      {
+        "minHours": 24,
+        "maxHours": 72,
+        "reminderIntervalHours": 8,
+        "deferrals": ["4h", "8h", "24h"]
+      },
+      {
+        "minHours": 72,
+        "maxHours": null,
+        "reminderIntervalHours": 24,
+        "deferrals": ["8h", "24h", "48h"]
+      }
+    ],
+    "detectionMethods": {
+      "windowsUpdate": true,
+      "sccm": true,
+      "registry": true,
+      "pendingFileOperations": true
+    }
+  },
+  "database": {
+    "path": "%PROGRAMDATA%\\RebootReminder\\reboot_reminder.db"
+  },
+  "logging": {
+    "path": "%PROGRAMDATA%\\RebootReminder\\logs\\reboot_reminder.log",
+    "level": "info",
+    "maxFiles": 10,
+    "maxSize": 10
+  },
+  "watchdog": {
+    "enabled": true,
+    "checkIntervalSeconds": 60,
+    "maxRestartAttempts": 3,
+    "restartDelaySeconds": 10,
+    "servicePath": "",
+    "serviceName": "RebootReminder"
+  }
+}
