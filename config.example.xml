@@ -7,7 +7,9 @@
     <configRefreshMinutes>60</configRefreshMinutes>
   </service>
   <notification>
-    <type>both</type>
+    <showToast>true</showToast>
+    <showTray>true</showTray>
+    <showBalloon>false</showBalloon>
     <branding>
       <title>Reboot Reminder</title>
       <iconPath>%PROGRAMDATA%\RebootReminder\icon.ico</iconPath>
@@ -42,32 +44,33 @@
   <reboot>
     <systemReboot>
       <enabled>true</enabled>
-      <countdownSeconds>30</countdownSeconds>
+      <countdown>30s</countdown>
       <showConfirmation>true</showConfirmation>
       <confirmationMessage>The system needs to restart. Do you want to restart now?</confirmationMessage>
       <confirmationTitle>System Restart Required</confirmationTitle>
     </systemReboot>
     <timeframes>
       <timeframes>
-        <minHours>24</minHours>
-        <maxHours>48</maxHours>
-        <reminderIntervalHours>4</reminderIntervalHours>
+        <min>24h</min>
+        <max>48h</max>
+        <reminderInterval>4h</reminderInterval>
         <deferrals>1h</deferrals>
         <deferrals>4h</deferrals>
         <deferrals>8h</deferrals>
         <deferrals>24h</deferrals>
       </timeframes>
       <timeframes>
-        <minHours>49</minHours>
-        <maxHours>72</maxHours>
-        <reminderIntervalHours>2</reminderIntervalHours>
+        <min>49h</min>
+        <max>72h</max>
+        <reminderInterval>2h</reminderInterval>
         <deferrals>1h</deferrals>
         <deferrals>2h</deferrals>
         <deferrals>4h</deferrals>
       </timeframes>
       <timeframes>
-        <minHours>73</minHours>
-        <reminderIntervalMinutes>30</reminderIntervalMinutes>
+        <min>73h</min>
+        <max></max>
+        <reminderInterval>30m</reminderInterval>
         <deferrals>30m</deferrals>
         <deferrals>1h</deferrals>
       </timeframes>
@@ -90,9 +93,9 @@
   </logging>
   <watchdog>
     <enabled>true</enabled>
-    <checkIntervalSeconds>300</checkIntervalSeconds>
+    <checkInterval>5m</checkInterval>
     <maxRestartAttempts>3</maxRestartAttempts>
-    <restartDelaySeconds>30</restartDelaySeconds>
+    <restartDelay>30s</restartDelay>
     <serviceName>RebootReminder</serviceName>
   </watchdog>
 </config>

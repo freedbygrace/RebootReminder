@@ -6,7 +6,9 @@
     "configRefreshMinutes": 60
   },
   "notification": {
-    "type": "both",
+    "showToast": true,
+    "showTray": true,
+    "showBalloon": false,
     "branding": {
       "title": "Reboot Reminder",
       "iconPath": "%PROGRAMDATA%\\RebootReminder\\icon.ico",
@@ -35,27 +37,28 @@
   "reboot": {
     "systemReboot": {
       "enabled": true,
-      "countdownSeconds": 30,
+      "countdown": "30s",
       "showConfirmation": true,
       "confirmationMessage": "The system needs to restart. Do you want to restart now?",
       "confirmationTitle": "System Restart Required"
     },
     "timeframes": [
       {
-        "minHours": 24,
-        "maxHours": 48,
-        "reminderIntervalHours": 4,
+        "min": "24h",
+        "max": "48h",
+        "reminderInterval": "4h",
         "deferrals": ["1h", "4h", "8h", "24h"]
       },
       {
-        "minHours": 49,
-        "maxHours": 72,
-        "reminderIntervalHours": 2,
+        "min": "49h",
+        "max": "72h",
+        "reminderInterval": "2h",
         "deferrals": ["1h", "2h", "4h"]
       },
       {
-        "minHours": 73,
-        "reminderIntervalMinutes": 30,
+        "min": "73h",
+        "max": null,
+        "reminderInterval": "30m",
         "deferrals": ["30m", "1h"]
       }
     ],
@@ -77,9 +80,9 @@
   },
   "watchdog": {
     "enabled": true,
-    "checkIntervalSeconds": 300,
+    "checkInterval": "5m",
     "maxRestartAttempts": 3,
-    "restartDelaySeconds": 30,
+    "restartDelay": "30s",
     "serviceName": "RebootReminder"
   }
 }
