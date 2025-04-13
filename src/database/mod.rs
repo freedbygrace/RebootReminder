@@ -8,6 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension, types::{FromSql, FromSqlRe
 use chrono::{DateTime, Utc, TimeZone};
 use std::path::Path;
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub use models::*;
 
@@ -42,6 +43,44 @@ impl ToSql for DateTimeUtc {
     }
 }
 
+// Define a wrapper type for Uuid to implement FromSql and ToSql
+#[derive(Debug, Clone)]
+pub struct UuidWrapper(pub Uuid);
+
+impl FromSql for UuidWrapper {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Text(s) => {
+                let text = std::str::from_utf8(s).map_err(|_| rusqlite::types::FromSqlError::InvalidType)?;
+                Uuid::parse_str(text)
+                    .map(UuidWrapper)
+                    .map_err(|_| rusqlite::types::FromSqlError::InvalidType)
+            },
+            _ => Err(rusqlite::types::FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl ToSql for UuidWrapper {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let s = self.0.to_string();
+        Ok(ToSqlOutput::from(s))
+    }
+}
+
+// Implement conversions between UuidWrapper and Uuid
+impl From<Uuid> for UuidWrapper {
+    fn from(uuid: Uuid) -> Self {
+        UuidWrapper(uuid)
+    }
+}
+
+impl From<UuidWrapper> for Uuid {
+    fn from(wrapper: UuidWrapper) -> Self {
+        wrapper.0
+    }
+}
+
 // Implement conversions between DateTimeUtc and DateTime<Utc>
 impl From<DateTime<Utc>> for DateTimeUtc {
     fn from(dt: DateTime<Utc>) -> Self {
@@ -53,6 +92,18 @@ impl From<DateTimeUtc> for DateTime<Utc> {
     fn from(dt: DateTimeUtc) -> Self {
         dt.0
     }
+}
+
+/// Check if a table exists in the database
+fn table_exists(conn: &Connection, table_name: &str) -> Result<bool> {
+    let query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
+    let exists: Option<String> = conn.query_row(
+        query,
+        params![table_name],
+        |row| row.get(0)
+    ).optional()?;
+
+    Ok(exists.is_some())
 }
 
 /// Initialize the database
@@ -94,114 +145,144 @@ fn init_schema(conn: &Connection) -> Result<()> {
     info!("Initializing database schema");
 
     // Enable foreign keys
-    info!("Enabling SQLite foreign keys");
+    debug!("Enabling SQLite foreign keys");
     conn.execute("PRAGMA foreign_keys = ON", [])?;
 
     // Create reboot_history table
-    info!("Creating reboot_history table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS reboot_history (
-            id TEXT PRIMARY KEY,
-            reboot_time TEXT NOT NULL,
-            reason TEXT,
-            source TEXT,
-            user_name TEXT,
-            computer_name TEXT,
-            success INTEGER NOT NULL,
-            duration INTEGER
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS reboot_history (
+        id TEXT PRIMARY KEY,
+        reboot_time TEXT NOT NULL,
+        reason TEXT,
+        source TEXT,
+        user_name TEXT,
+        computer_name TEXT,
+        success INTEGER NOT NULL,
+        duration INTEGER
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "reboot_history")?;
+    if !exists {
+        info!("Creating reboot_history table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("reboot_history table already exists");
+    }
 
     // Create reboot_state table
-    info!("Creating reboot_state table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS reboot_state (
-            id TEXT PRIMARY KEY,
-            reboot_required INTEGER NOT NULL,
-            reboot_recommended INTEGER NOT NULL,
-            last_check_time TEXT NOT NULL,
-            reboot_required_since TEXT,
-            last_reboot_time TEXT,
-            postpone_count INTEGER NOT NULL,
-            next_reminder_time TEXT,
-            scheduled_reboot_time TEXT,
-            reboot_reason TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS reboot_state (
+        id TEXT PRIMARY KEY,
+        reboot_required INTEGER NOT NULL,
+        reboot_recommended INTEGER NOT NULL,
+        last_check_time TEXT NOT NULL,
+        reboot_required_since TEXT,
+        last_reboot_time TEXT,
+        postpone_count INTEGER NOT NULL,
+        next_reminder_time TEXT,
+        scheduled_reboot_time TEXT,
+        reboot_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "reboot_state")?;
+    if !exists {
+        info!("Creating reboot_state table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("reboot_state table already exists");
+    }
 
     // Create reboot_sources table
-    info!("Creating reboot_sources table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS reboot_sources (
-            id TEXT PRIMARY KEY,
-            reboot_state_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT,
-            severity TEXT NOT NULL,
-            detected_at TEXT NOT NULL,
-            expires_at TEXT,
-            details TEXT,
-            FOREIGN KEY (reboot_state_id) REFERENCES reboot_state (id) ON DELETE CASCADE
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS reboot_sources (
+        id TEXT PRIMARY KEY,
+        reboot_state_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        severity TEXT NOT NULL,
+        detected_at TEXT NOT NULL,
+        expires_at TEXT,
+        details TEXT,
+        FOREIGN KEY (reboot_state_id) REFERENCES reboot_state (id) ON DELETE CASCADE
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "reboot_sources")?;
+    if !exists {
+        info!("Creating reboot_sources table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("reboot_sources table already exists");
+    }
 
     // Create notifications table
-    info!("Creating notifications table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS notifications (
-            id TEXT PRIMARY KEY,
-            timestamp TEXT NOT NULL,
-            type TEXT NOT NULL,
-            message TEXT NOT NULL,
-            user_name TEXT,
-            dismissed INTEGER NOT NULL,
-            action TEXT,
-            created_at TEXT NOT NULL
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        user_name TEXT,
+        dismissed INTEGER NOT NULL,
+        action TEXT,
+        created_at TEXT NOT NULL
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "notifications")?;
+    if !exists {
+        info!("Creating notifications table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("notifications table already exists");
+    }
 
     // Create notification_interactions table
-    info!("Creating notification_interactions table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS notification_interactions (
-            id TEXT PRIMARY KEY,
-            notification_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            action TEXT NOT NULL,
-            user_name TEXT,
-            session_id TEXT,
-            details TEXT,
-            FOREIGN KEY (notification_id) REFERENCES notifications (id) ON DELETE CASCADE
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS notification_interactions (
+        id TEXT PRIMARY KEY,
+        notification_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        action TEXT NOT NULL,
+        user_name TEXT,
+        session_id TEXT,
+        details TEXT,
+        FOREIGN KEY (notification_id) REFERENCES notifications (id) ON DELETE CASCADE
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "notification_interactions")?;
+    if !exists {
+        info!("Creating notification_interactions table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("notification_interactions table already exists");
+    }
 
     // Create user_sessions table
-    info!("Creating user_sessions table if it doesn't exist");
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS user_sessions (
-            id TEXT PRIMARY KEY,
-            user_name TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            logon_time TEXT NOT NULL,
-            is_active INTEGER NOT NULL,
-            is_rdp INTEGER NOT NULL,
-            is_console INTEGER NOT NULL,
-            client_name TEXT,
-            client_ip TEXT,
-            display_name TEXT,
-            last_activity TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )",
-        [],
-    )?;
+    let query = "CREATE TABLE IF NOT EXISTS user_sessions (
+        id TEXT PRIMARY KEY,
+        user_name TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        logon_time TEXT NOT NULL,
+        is_active INTEGER NOT NULL,
+        is_rdp INTEGER NOT NULL,
+        is_console INTEGER NOT NULL,
+        client_name TEXT,
+        client_ip TEXT,
+        display_name TEXT,
+        last_activity TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )";
+
+    // Check if table exists before creating
+    let exists = table_exists(conn, "user_sessions")?;
+    if !exists {
+        info!("Creating user_sessions table with query: {}", query);
+        conn.execute(query, [])?;
+    } else {
+        debug!("user_sessions table already exists");
+    }
 
     info!("Database schema initialized successfully");
     Ok(())
@@ -222,7 +303,7 @@ pub fn get_reboot_state(pool: &DbPool) -> Result<Option<RebootState>> {
         [],
         |row| {
             Ok(RebootState {
-                id: row.get(0)?,
+                id: row.get::<_, UuidWrapper>(0)?.into(),
                 reboot_required: row.get(1)?,
                 reboot_recommended: row.get(2)?,
                 last_check_time: row.get::<_, DateTimeUtc>(3)?.into(),
@@ -237,7 +318,7 @@ pub fn get_reboot_state(pool: &DbPool) -> Result<Option<RebootState>> {
                 updated_at: row.get::<_, DateTimeUtc>(11)?.into(),
             })
         },
-    ).optional()?;
+    ).optional().context(format!("Failed to execute query: {}", query))?;
 
     // Log the result
     match &state {
@@ -247,14 +328,16 @@ pub fn get_reboot_state(pool: &DbPool) -> Result<Option<RebootState>> {
 
     // If we found a state, get its sources
     if let Some(mut state) = state {
-        let mut stmt = conn.prepare(
-            "SELECT id, name, description, severity, detected_at, expires_at, details
-             FROM reboot_sources WHERE reboot_state_id = ?",
-        )?;
+        let sources_query = "SELECT id, name, description, severity, detected_at, expires_at, details
+             FROM reboot_sources WHERE reboot_state_id = ?";
 
-        let sources = stmt.query_map([&state.id], |row| {
+        info!("Executing query: {} with params: [{}]", sources_query, state.id);
+        let mut stmt = conn.prepare(sources_query)
+            .context(format!("Failed to prepare query: {}", sources_query))?;
+
+        let sources = stmt.query_map([&UuidWrapper::from(state.id)], |row| {
             Ok(RebootSource {
-                id: row.get(0)?,
+                id: row.get::<_, UuidWrapper>(0)?.into(),
                 name: row.get(1)?,
                 description: row.get(2)?,
                 severity: row.get(3)?,
@@ -292,7 +375,7 @@ pub fn save_reboot_state(pool: &DbPool, state: &RebootState) -> Result<()> {
     tx.execute(
         state_query,
         params![
-            state.id,
+            UuidWrapper::from(state.id),
             state.reboot_required,
             state.reboot_recommended,
             DateTimeUtc::from(state.last_check_time),
@@ -314,7 +397,7 @@ pub fn save_reboot_state(pool: &DbPool, state: &RebootState) -> Result<()> {
     info!("Executing query to delete existing reboot sources: {}", delete_query);
     let deleted_rows = tx.execute(
         delete_query,
-        [&state.id],
+        [&UuidWrapper::from(state.id)],
     )?;
     info!("Deleted {} existing reboot sources", deleted_rows);
 
@@ -329,8 +412,8 @@ pub fn save_reboot_state(pool: &DbPool, state: &RebootState) -> Result<()> {
         tx.execute(
             insert_query,
             params![
-                source.id,
-                state.id,
+                UuidWrapper::from(source.id),
+                UuidWrapper::from(state.id),
                 source.name,
                 source.description,
                 source.severity,
@@ -351,14 +434,18 @@ pub fn save_reboot_state(pool: &DbPool, state: &RebootState) -> Result<()> {
 
 /// Add a reboot history entry
 pub fn add_reboot_history(pool: &DbPool, history: &RebootHistory) -> Result<()> {
+    info!("Adding reboot history entry to database: id={}, time={}", history.id, history.reboot_time);
     let conn = pool.get().context("Failed to get database connection")?;
 
-    conn.execute(
-        "INSERT INTO reboot_history (
+    let query = "INSERT INTO reboot_history (
             id, reboot_time, reason, source, user_name, computer_name, success, duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+    info!("Executing query: {} with params: [id={}, time={}]", query, history.id, history.reboot_time);
+    conn.execute(
+        query,
         params![
-            history.id,
+            UuidWrapper::from(history.id),
             DateTimeUtc::from(history.reboot_time),
             history.reason,
             history.source,
@@ -367,27 +454,32 @@ pub fn add_reboot_history(pool: &DbPool, history: &RebootHistory) -> Result<()> 
             history.success,
             history.duration,
         ],
-    )?;
+    ).context(format!("Failed to execute query: {}", query))?;
 
-    debug!("Reboot history entry added successfully");
+    info!("Reboot history entry added successfully");
     Ok(())
 }
 
 /// Get reboot history
 pub fn get_reboot_history(pool: &DbPool, limit: Option<u32>) -> Result<Vec<RebootHistory>> {
+    info!("Getting reboot history from database");
     let conn = pool.get().context("Failed to get database connection")?;
 
     let limit_clause = limit.map_or(String::from(""), |l| format!("LIMIT {}", l));
 
-    let mut stmt = conn.prepare(&format!(
+    let query = format!(
         "SELECT id, reboot_time, reason, source, user_name, computer_name, success, duration
          FROM reboot_history ORDER BY reboot_time DESC {}",
         limit_clause
-    ))?;
+    );
+
+    info!("Executing query: {}", query);
+    let mut stmt = conn.prepare(&query)
+        .context(format!("Failed to prepare query: {}", query))?;
 
     let history = stmt.query_map([], |row| {
         Ok(RebootHistory {
-            id: row.get(0)?,
+            id: row.get::<_, UuidWrapper>(0)?.into(),
             reboot_time: row.get::<_, DateTimeUtc>(1)?.into(),
             reason: row.get(2)?,
             source: row.get(3)?,
@@ -419,7 +511,7 @@ pub fn add_notification(pool: &DbPool, notification: &Notification) -> Result<()
     conn.execute(
         query,
         params![
-            notification.id,
+            UuidWrapper::from(notification.id),
             DateTimeUtc::from(notification.timestamp),
             notification.notification_type,
             notification.message,
@@ -448,7 +540,7 @@ pub fn get_notifications(pool: &DbPool, limit: Option<u32>) -> Result<Vec<Notifi
 
     let notifications = stmt.query_map([], |row| {
         Ok(Notification {
-            id: row.get(0)?,
+            id: row.get::<_, UuidWrapper>(0)?.into(),
             timestamp: row.get::<_, DateTimeUtc>(1)?.into(),
             notification_type: row.get(2)?,
             message: row.get(3)?,
@@ -489,8 +581,8 @@ pub fn add_notification_interaction(pool: &DbPool, interaction: &NotificationInt
     conn.execute(
         query,
         params![
-            interaction.id,
-            interaction.notification_id,
+            UuidWrapper::from(interaction.id),
+            UuidWrapper::from(interaction.notification_id),
             DateTimeUtc::from(interaction.timestamp),
             interaction.action,
             interaction.user_name,
@@ -507,15 +599,21 @@ pub fn add_notification_interaction(pool: &DbPool, interaction: &NotificationInt
 
 /// Save a user session
 pub fn save_user_session(pool: &DbPool, session: &UserSession) -> Result<()> {
+    info!("Saving user session to database: id={}, user={}, session_id={}",
+          session.id, session.user_name, session.session_id);
     let conn = pool.get().context("Failed to get database connection")?;
 
-    conn.execute(
-        "INSERT OR REPLACE INTO user_sessions (
+    let query = "INSERT OR REPLACE INTO user_sessions (
             id, user_name, session_id, logon_time, is_active, is_rdp, is_console,
             client_name, client_ip, display_name, last_activity, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    info!("Executing query: {} with params: [id={}, user={}, session_id={}]",
+          query, session.id, session.user_name, session.session_id);
+    conn.execute(
+        query,
         params![
-            session.id,
+            UuidWrapper::from(session.id),
             session.user_name,
             session.session_id,
             DateTimeUtc::from(session.logon_time),
@@ -532,25 +630,28 @@ pub fn save_user_session(pool: &DbPool, session: &UserSession) -> Result<()> {
             DateTimeUtc::from(session.created_at),
             DateTimeUtc::from(session.updated_at),
         ],
-    )?;
+    ).context(format!("Failed to execute query: {}", query))?;
 
-    debug!("User session saved successfully");
+    info!("User session saved successfully");
     Ok(())
 }
 
 /// Get active user sessions
 pub fn get_active_user_sessions(pool: &DbPool) -> Result<Vec<UserSession>> {
+    info!("Getting active user sessions from database");
     let conn = pool.get().context("Failed to get database connection")?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, user_name, session_id, logon_time, is_active, is_rdp, is_console,
+    let query = "SELECT id, user_name, session_id, logon_time, is_active, is_rdp, is_console,
          client_name, client_ip, display_name, last_activity, created_at, updated_at
-         FROM user_sessions WHERE is_active = 1 ORDER BY logon_time DESC",
-    )?;
+         FROM user_sessions WHERE is_active = 1 ORDER BY logon_time DESC";
+
+    info!("Executing query: {}", query);
+    let mut stmt = conn.prepare(query)
+        .context(format!("Failed to prepare query: {}", query))?;
 
     let sessions = stmt.query_map([], |row| {
         Ok(UserSession {
-            id: row.get(0)?,
+            id: row.get::<_, UuidWrapper>(0)?.into(),
             user_name: row.get(1)?,
             session_id: row.get(2)?,
             logon_time: row.get::<_, DateTimeUtc>(3)?.into(),

@@ -13,7 +13,7 @@ use windows::Win32::System::Services::{
 use windows::core::PCWSTR;
 
 /// Watchdog service configuration
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WatchdogConfig {
     /// Whether the watchdog is enabled
     pub enabled: bool,
@@ -32,6 +32,24 @@ pub struct WatchdogConfig {
 
     /// Name of the main service
     pub service_name: String,
+
+    /// Power monitor for detecting system power events
+    #[allow(dead_code)]
+    pub power_checker: Option<PowerEventChecker>,
+}
+
+impl Clone for WatchdogConfig {
+    fn clone(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            check_interval_seconds: self.check_interval_seconds,
+            max_restart_attempts: self.max_restart_attempts,
+            restart_delay_seconds: self.restart_delay_seconds,
+            service_path: self.service_path.clone(),
+            service_name: self.service_name.clone(),
+            power_checker: None, // Don't clone the power checker
+        }
+    }
 }
 
 impl Default for WatchdogConfig {
@@ -43,14 +61,22 @@ impl Default for WatchdogConfig {
             restart_delay_seconds: 10,
             service_path: PathBuf::new(),
             service_name: "RebootReminder".to_string(),
+            power_checker: None,
         }
     }
 }
+
+mod power_events;
+use power_events::{PowerMonitor, PowerEvent, PowerEventChecker};
 
 /// Watchdog service
 pub struct Watchdog {
     config: WatchdogConfig,
     running: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    power_monitor: Option<PowerMonitor>,
+    power_checker: Option<PowerEventChecker>,
+    last_service_check: Option<std::time::Instant>,
 }
 
 impl Watchdog {
@@ -59,11 +85,14 @@ impl Watchdog {
         Self {
             config,
             running: Arc::new(AtomicBool::new(false)),
+            power_monitor: None,
+            power_checker: None,
+            last_service_check: None,
         }
     }
 
     /// Start the watchdog
-    pub fn start(&self) -> Result<()> {
+    pub fn start(&mut self) -> Result<()> {
         if !self.config.enabled {
             info!("Watchdog is disabled, not starting");
             return Ok(());
@@ -74,6 +103,18 @@ impl Watchdog {
         // Set running flag
         self.running.store(true, Ordering::SeqCst);
 
+        // Initialize power monitor
+        let mut power_monitor = PowerMonitor::new();
+        if let Err(e) = power_monitor.start() {
+            warn!("Failed to start power monitor: {}", e);
+        } else {
+            info!("Power monitor started successfully");
+            self.power_checker = Some(power_monitor.create_checker());
+        }
+
+        // Initialize last service check time
+        self.last_service_check = Some(std::time::Instant::now());
+
         // Clone values for the thread
         let config = self.config.clone();
         let running = self.running.clone();
@@ -81,49 +122,87 @@ impl Watchdog {
         // Start watchdog thread
         thread::spawn(move || {
             let mut restart_attempts = 0;
+            let mut last_check = std::time::Instant::now();
 
             while running.load(Ordering::SeqCst) {
-                // Check if the main service is running
-                match is_service_running(&config.service_name) {
-                    Ok(true) => {
-                        debug!("Main service is running");
-                        // Reset restart attempts if service is running
-                        restart_attempts = 0;
-                    }
-                    Ok(false) => {
-                        warn!("Main service is not running");
+                let now = std::time::Instant::now();
+                let elapsed = now.duration_since(last_check);
 
-                        // Check if we've exceeded the maximum restart attempts
-                        if restart_attempts >= config.max_restart_attempts {
-                            error!("Maximum restart attempts ({}) reached, giving up", config.max_restart_attempts);
-                            break;
-                        }
+                // Check for power events
+                let mut force_check = false;
 
-                        // Attempt to restart the service
-                        info!("Attempting to restart main service (attempt {}/{})",
-                             restart_attempts + 1, config.max_restart_attempts);
+                // Check if it's been a long time since the last check
+                // This could indicate the system was suspended
+                if elapsed.as_secs() > config.check_interval_seconds * 2 {
+                    info!("Long time since last check ({}s), possible system resume, forcing service check", elapsed.as_secs());
+                    force_check = true;
+                }
 
-                        match restart_service(&config.service_name) {
-                            Ok(()) => {
-                                info!("Successfully restarted main service");
-                                restart_attempts += 1;
+                // Check for power events from the power monitor
+                if let Some(power_checker) = &config.power_checker {
+                    if let Some(event) = power_checker.check_events() {
+                        match event {
+                            PowerEvent::Resume => {
+                                info!("System resume event detected, forcing service check");
+                                force_check = true;
+                            },
+                            PowerEvent::DisplayOn => {
+                                info!("Display turned on, forcing service check");
+                                force_check = true;
+                            },
+                            _ => {
+                                debug!("Power event detected: {:?}", event);
                             }
-                            Err(e) => {
-                                error!("Failed to restart main service: {}", e);
-                                restart_attempts += 1;
-                            }
                         }
-
-                        // Wait before checking again
-                        thread::sleep(Duration::from_secs(config.restart_delay_seconds));
-                    }
-                    Err(e) => {
-                        error!("Failed to check if main service is running: {}", e);
                     }
                 }
 
-                // Wait for the next check
-                thread::sleep(Duration::from_secs(config.check_interval_seconds));
+                // Check if it's time to check the service status or if we need to force a check
+                if elapsed.as_secs() >= config.check_interval_seconds || force_check {
+                    // Check if the main service is running
+                    match is_service_running(&config.service_name) {
+                        Ok(true) => {
+                            debug!("Main service is running");
+                            // Reset restart attempts if service is running
+                            restart_attempts = 0;
+                        }
+                        Ok(false) => {
+                            warn!("Main service is not running");
+
+                            // Check if we've exceeded the maximum restart attempts
+                            if restart_attempts >= config.max_restart_attempts {
+                                error!("Maximum restart attempts ({}) reached, giving up", config.max_restart_attempts);
+                                break;
+                            }
+
+                            // Attempt to restart the service
+                            info!("Attempting to restart main service (attempt {}/{})",
+                                restart_attempts + 1, config.max_restart_attempts);
+
+                            match restart_service(&config.service_name) {
+                                Ok(()) => {
+                                    info!("Successfully restarted main service");
+                                    restart_attempts += 1;
+                                }
+                                Err(e) => {
+                                    error!("Failed to restart main service: {}", e);
+                                    restart_attempts += 1;
+                                }
+                            }
+
+                            // Wait before checking again
+                            thread::sleep(Duration::from_secs(config.restart_delay_seconds));
+                        }
+                        Err(e) => {
+                            error!("Failed to check if main service is running: {}", e);
+                        }
+                }
+
+                    last_check = now;
+                }
+
+                // Sleep for a short time to avoid busy waiting
+                thread::sleep(Duration::from_secs(1));
             }
 
             info!("Watchdog thread exiting");

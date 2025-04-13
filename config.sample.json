@@ -10,26 +10,26 @@
     "branding": {
       "title": "Reboot Reminder",
       "iconPath": "%PROGRAMDATA%\\RebootReminder\\icon.ico",
-      "company": "Your Company"
+      "company": "IT Department"
     },
     "messages": {
-      "rebootRequired": "A system reboot is required to complete recent updates.",
-      "rebootRecommended": "A system reboot is recommended to improve system performance.",
-      "rebootScheduled": "A system reboot has been scheduled for {time}.",
-      "rebootInProgress": "System reboot in progress...",
-      "rebootCancelled": "Scheduled reboot has been cancelled.",
-      "rebootPostponed": "Reboot has been postponed until {time}.",
-      "rebootCompleted": "System has been successfully rebooted.",
-      "actionRequired": "Reboot Now",
-      "actionRecommended": "Reboot Recommended",
-      "actionNotRequired": "No Reboot Required",
-      "actionNotAvailable": "Reboot Options Unavailable"
+      "rebootRequired": "Your computer requires a reboot to complete recent updates.",
+      "rebootRecommended": "It is recommended to reboot your computer to apply recent updates.",
+      "rebootScheduled": "Your computer is scheduled to reboot at %s.",
+      "rebootInProgress": "Your computer will reboot in %s.",
+      "rebootCancelled": "The scheduled reboot has been cancelled.",
+      "rebootPostponed": "The reboot has been postponed for %s.",
+      "rebootCompleted": "Your computer has been successfully rebooted.",
+      "actionRequired": "Reboot is required. Click to schedule.",
+      "actionRecommended": "Reboot is recommended. Click for options.",
+      "actionNotRequired": "No reboot is required at this time.",
+      "actionNotAvailable": "Reboot options are not available at this time."
     },
     "quietHours": {
       "enabled": true,
-      "startTime": "18:00",
+      "startTime": "22:00",
       "endTime": "08:00",
-      "daysOfWeek": [0, 6]
+      "daysOfWeek": [0, 1, 2, 3, 4, 5, 6]
     }
   },
   "reboot": {
@@ -42,22 +42,21 @@
     },
     "timeframes": [
       {
-        "minHours": 0,
-        "maxHours": 24,
-        "reminderIntervalHours": 4,
-        "deferrals": ["1h", "4h", "8h"]
-      },
-      {
         "minHours": 24,
-        "maxHours": 72,
-        "reminderIntervalHours": 8,
-        "deferrals": ["4h", "8h", "24h"]
+        "maxHours": 48,
+        "reminderIntervalHours": 4,
+        "deferrals": ["1h", "4h", "8h", "24h"]
       },
       {
-        "minHours": 72,
-        "maxHours": null,
-        "reminderIntervalHours": 24,
-        "deferrals": ["8h", "24h", "48h"]
+        "minHours": 49,
+        "maxHours": 72,
+        "reminderIntervalHours": 2,
+        "deferrals": ["1h", "2h", "4h"]
+      },
+      {
+        "minHours": 73,
+        "reminderIntervalMinutes": 30,
+        "deferrals": ["30m", "1h"]
       }
     ],
     "detectionMethods": {
@@ -73,15 +72,14 @@
   "logging": {
     "path": "%PROGRAMDATA%\\RebootReminder\\logs\\reboot_reminder.log",
     "level": "info",
-    "maxFiles": 10,
+    "maxFiles": 7,
     "maxSize": 10
   },
   "watchdog": {
     "enabled": true,
-    "checkIntervalSeconds": 60,
+    "checkIntervalSeconds": 300,
     "maxRestartAttempts": 3,
-    "restartDelaySeconds": 10,
-    "servicePath": "",
+    "restartDelaySeconds": 30,
     "serviceName": "RebootReminder"
   }
 }

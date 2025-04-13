@@ -8,7 +8,7 @@ pub mod service;
 pub mod utils;
 pub mod watchdog;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use log::{error, info};
 use std::path::PathBuf;
@@ -58,7 +58,11 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Initialize logging
-    logging::init(args.debug).context("Failed to initialize logging")?;
+    if let Err(e) = logging::init(args.debug) {
+        // Can't use log macros yet since logging isn't initialized
+        eprintln!("Failed to initialize logging: {}", e);
+        return Err(anyhow::anyhow!("Failed to initialize logging: {}", e));
+    }
     info!("Starting Reboot Reminder");
 
     // Check if running with administrative privileges for commands that require it
@@ -73,12 +77,27 @@ fn main() -> Result<()> {
 
     // Load configuration
     let config_path = args.config.unwrap_or_else(|| {
-        let mut path = std::env::current_exe()
-            .expect("Failed to get executable path")
-            .parent()
-            .expect("Failed to get executable directory")
-            .to_path_buf();
+        let mut path = match std::env::current_exe() {
+            Ok(exe_path) => {
+                info!("Executable path: {:?}", exe_path);
+                match exe_path.parent() {
+                    Some(parent) => {
+                        info!("Executable directory: {:?}", parent);
+                        parent.to_path_buf()
+                    },
+                    None => {
+                        error!("Failed to get executable directory, using current directory");
+                        PathBuf::from(".")
+                    }
+                }
+            },
+            Err(e) => {
+                error!("Failed to get executable path: {}, using current directory", e);
+                PathBuf::from(".")
+            }
+        };
         path.push("config.json");
+        info!("Default configuration path: {:?}", path);
         path
     });
 
@@ -91,12 +110,28 @@ fn main() -> Result<()> {
         }
     }
 
-    let config = config::load(&config_path).context("Failed to load configuration")?;
-    info!("Configuration loaded from {:?}", config_path);
+    let config = match config::load(&config_path) {
+        Ok(cfg) => {
+            info!("Configuration loaded successfully from {:?}", config_path);
+            cfg
+        },
+        Err(e) => {
+            error!("Failed to load configuration: {}", e);
+            return Err(anyhow::anyhow!("Failed to load configuration: {}", e));
+        }
+    };
 
     // Initialize database
-    let db = database::init(&config.database).context("Failed to initialize database")?;
-    info!("Database initialized");
+    let db = match database::init(&config.database) {
+        Ok(pool) => {
+            info!("Database initialized successfully at {}", config.database.path);
+            pool
+        },
+        Err(e) => {
+            error!("Failed to initialize database: {}", e);
+            return Err(anyhow::anyhow!("Failed to initialize database: {}", e));
+        }
+    };
 
     // Process command
     match args.command {
@@ -106,18 +141,33 @@ fn main() -> Result<()> {
             description,
         }) => {
             info!("Installing service: {}", name);
-            service::install(&name, &display_name, &description)
-                .context("Failed to install service")?;
-            info!("Service installed successfully");
+            match service::install(&name, &display_name, &description) {
+                Ok(_) => info!("Service installed successfully"),
+                Err(e) => {
+                    error!("Failed to install service: {}", e);
+                    return Err(anyhow::anyhow!("Failed to install service: {}", e));
+                }
+            }
         }
         Some(Commands::Uninstall) => {
             info!("Uninstalling service");
-            service::uninstall().context("Failed to uninstall service")?;
-            info!("Service uninstalled successfully");
+            match service::uninstall() {
+                Ok(_) => info!("Service uninstalled successfully"),
+                Err(e) => {
+                    error!("Failed to uninstall service: {}", e);
+                    return Err(anyhow::anyhow!("Failed to uninstall service: {}", e));
+                }
+            }
         }
         Some(Commands::Run) => {
             info!("Running service");
-            service::run(config, db).context("Failed to run service")?;
+            match service::run(config, db) {
+                Ok(_) => info!("Service completed successfully"),
+                Err(e) => {
+                    error!("Failed to run service: {}", e);
+                    return Err(anyhow::anyhow!("Failed to run service: {}", e));
+                }
+            }
         }
         Some(Commands::Check) => {
             info!("Checking if the system requires a reboot");
@@ -132,13 +182,20 @@ fn main() -> Result<()> {
                 }
                 Err(e) => {
                     error!("Failed to check if reboot is required: {}", e);
+                    return Err(anyhow::anyhow!("Failed to check if reboot is required: {}", e));
                 }
             }
         }
         None => {
             // Default to running the service
             info!("No command specified, running service");
-            service::run(config, db).context("Failed to run service")?;
+            match service::run(config, db) {
+                Ok(_) => info!("Service completed successfully"),
+                Err(e) => {
+                    error!("Failed to run service: {}", e);
+                    return Err(anyhow::anyhow!("Failed to run service: {}", e));
+                }
+            }
         }
     }
 

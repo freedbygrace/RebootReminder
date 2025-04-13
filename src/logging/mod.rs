@@ -148,10 +148,10 @@ fn create_rolling_file_appender(
     // Create a compound policy
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
-    // Create a rolling file appender
+    // Create a rolling file appender with enhanced error logging
     let appender = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
-            "{d(%Y-%m-%d %H:%M:%S)} [{l}] {t} - {m}{n}",
+            "{d(%Y-%m-%d %H:%M:%S)} [{l}] [{T}] {t} - {m}{n}",
         )))
         .build(path, Box::new(policy))
         .context("Failed to build file appender")?;

@@ -8,6 +8,7 @@ use chrono::{Duration, Utc};
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
+
 use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -141,9 +142,22 @@ pub fn is_running_as_service() -> bool {
     unsafe { RUNNING_AS_SERVICE }
 }
 
+/// Run the service directly without going through the service control manager
+fn run_service_directly(_config: Config, _db_pool: DbPool) -> Result<()> {
+    info!("Running service directly (not as a Windows service)");
+
+    // Set the config path for the run_service function
+    unsafe {
+        CONFIG_PATH = Some(PathBuf::from("config.json"));
+    }
+
+    // Call the run_service function directly
+    run_service()
+}
+
 /// Run the service
-pub fn run(_config: Config, _db_pool: DbPool) -> Result<()> {
-    info!("Running service");
+pub fn run(config: Config, db_pool: DbPool) -> Result<()> {
+    info!("Starting service initialization");
 
     // Set global state
     unsafe {
@@ -151,21 +165,54 @@ pub fn run(_config: Config, _db_pool: DbPool) -> Result<()> {
         RUNNING_AS_SERVICE = true;
     }
 
-    // Start the service dispatcher
-    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
-        .context("Failed to start service dispatcher")?;
+    info!("Global state initialized");
 
-    Ok(())
+    // Try to start the service dispatcher
+    info!("Starting service dispatcher");
+    match service_dispatcher::start(SERVICE_NAME, ffi_service_main) {
+        Ok(_) => {
+            info!("Service dispatcher started successfully");
+            Ok(())
+        },
+        Err(e) => {
+            // Check if the error is ERROR_FAILED_SERVICE_CONTROLLER_CONNECT (1063)
+            // This error occurs when the program is not started as a service
+            let error_code = match &e {
+                windows_service::Error::Winapi(io_error) => io_error.raw_os_error(),
+                _ => None,
+            };
+
+            if let Some(code) = error_code {
+                if code == 1063 {
+                    warn!("Not running as a Windows service (error 1063), falling back to direct execution");
+                    // Fall back to direct execution
+                    run_service_directly(config, db_pool)
+                } else {
+                    error!("Failed to start service dispatcher: {} (os error {})", e, code);
+                    Err(anyhow::anyhow!("Failed to start service dispatcher: {} (os error {})", e, code))
+                }
+            } else {
+                error!("Failed to start service dispatcher: {}", e);
+                Err(anyhow::anyhow!("Failed to start service dispatcher: {}", e))
+            }
+        }
+    }
 }
 
 /// Service main function
 // This function is replaced by the define_windows_service! macro
 // The actual implementation is below, but it's not used directly
 #[allow(dead_code)]
-fn service_main_impl(_arguments: Vec<OsString>) {
-    info!("Service main function started");
+fn service_main_impl(arguments: Vec<OsString>) {
+    info!("Service main function started with {} arguments", arguments.len());
+
+    // Log the arguments
+    for (i, arg) in arguments.iter().enumerate() {
+        info!("Service argument {}: {:?}", i, arg);
+    }
 
     // Register the service control handler
+    info!("Registering service control handler");
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
             ServiceControl::Stop => {
@@ -175,13 +222,23 @@ fn service_main_impl(_arguments: Vec<OsString>) {
                 }
                 ServiceControlHandlerResult::NoError
             }
-            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-            _ => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::Interrogate => {
+                info!("Service interrogate requested");
+                ServiceControlHandlerResult::NoError
+            },
+            _ => {
+                info!("Unhandled service control event: {:?}", control_event);
+                ServiceControlHandlerResult::NotImplemented
+            },
         }
     };
 
+    info!("Calling service_control_handler::register");
     let status_handle = match service_control_handler::register(SERVICE_NAME, event_handler) {
-        Ok(handle) => handle,
+        Ok(handle) => {
+            info!("Service control handler registered successfully");
+            handle
+        },
         Err(e) => {
             error!("Failed to register service control handler: {}", e);
             return;
@@ -189,6 +246,7 @@ fn service_main_impl(_arguments: Vec<OsString>) {
     };
 
     // Tell the service manager we are starting
+    info!("Setting service status to StartPending");
     if let Err(e) = status_handle.set_service_status(ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::StartPending,
@@ -198,9 +256,10 @@ fn service_main_impl(_arguments: Vec<OsString>) {
         wait_hint: std::time::Duration::from_secs(10),
         process_id: None,
     }) {
-        error!("Failed to set service status: {}", e);
+        error!("Failed to set service status to StartPending: {}", e);
         return;
     }
+    info!("Service status set to StartPending successfully");
 
     // Run the service
     match run_service() {
@@ -262,29 +321,72 @@ fn ensure_directories_exist(config: &Config) -> Result<()> {
 
 /// Run the service
 fn run_service() -> Result<()> {
-    info!("Starting service");
+    info!("Starting service initialization in run_service");
 
     // Load configuration
+    info!("Determining configuration path");
     #[allow(static_mut_refs)]
     let config_path = unsafe { CONFIG_PATH.clone() }.unwrap_or_else(|| {
-        let mut path = std::env::current_exe()
-            .expect("Failed to get executable path")
-            .parent()
-            .expect("Failed to get executable directory")
-            .to_path_buf();
+        info!("No configuration path set, using default");
+        let mut path = match std::env::current_exe() {
+            Ok(exe_path) => {
+                info!("Executable path: {:?}", exe_path);
+                match exe_path.parent() {
+                    Some(parent) => {
+                        info!("Executable directory: {:?}", parent);
+                        parent.to_path_buf()
+                    },
+                    None => {
+                        error!("Failed to get executable directory, using current directory");
+                        PathBuf::from(".")
+                    }
+                }
+            },
+            Err(e) => {
+                error!("Failed to get executable path: {}, using current directory", e);
+                PathBuf::from(".")
+            }
+        };
         path.push("config.json");
+        info!("Default configuration path: {:?}", path);
         path
     });
 
-    let config = config::load(&config_path).context("Failed to load configuration")?;
+    info!("Loading configuration from {:?}", config_path);
+    let config = match config::load(&config_path) {
+        Ok(cfg) => {
+            info!("Configuration loaded successfully");
+            cfg
+        },
+        Err(e) => {
+            error!("Failed to load configuration: {}", e);
+            return Err(e.into());
+        }
+    };
     info!("Configuration loaded from {:?}", config_path);
 
     // Create necessary directories
-    ensure_directories_exist(&config).context("Failed to create necessary directories")?;
+    info!("Creating necessary directories");
+    match ensure_directories_exist(&config) {
+        Ok(_) => info!("Directories created successfully"),
+        Err(e) => {
+            error!("Failed to create necessary directories: {}", e);
+            return Err(e.into());
+        }
+    }
 
     // Initialize database
-    let db_pool = database::init(&config.database).context("Failed to initialize database")?;
-    info!("Database initialized");
+    info!("Initializing database at {}", config.database.path);
+    let db_pool = match database::init(&config.database) {
+        Ok(pool) => {
+            info!("Database initialized successfully");
+            pool
+        },
+        Err(e) => {
+            error!("Failed to initialize database: {}", e);
+            return Err(e.into());
+        }
+    };
 
     // Create impersonator
     let impersonator = Arc::new(Impersonator::new());
@@ -316,6 +418,7 @@ fn run_service() -> Result<()> {
             restart_delay_seconds: config.watchdog.restart_delay_seconds,
             service_path: PathBuf::from(config.watchdog.service_path.clone()),
             service_name: config.watchdog.service_name.clone(),
+            power_checker: None,
         };
 
         // If service path is not specified, use the current executable path
@@ -324,7 +427,7 @@ fn run_service() -> Result<()> {
                 .expect("Failed to get executable path");
         }
 
-        let watchdog = crate::watchdog::Watchdog::new(watchdog_config);
+        let mut watchdog = crate::watchdog::Watchdog::new(watchdog_config);
         if let Err(e) = watchdog.start() {
             warn!("Failed to start watchdog service: {}", e);
         } else {

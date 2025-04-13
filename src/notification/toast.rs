@@ -33,13 +33,13 @@ impl ToastNotification {
     }
 
     /// Create a new toast notification with icon and ID
-    pub fn new_with_icon(title: &str, message: &str, icon_path: &Path, id: String) -> Self {
+    pub fn new_with_icon(title: &str, message: &str, icon_path: &Path, id: uuid::Uuid) -> Self {
         Self {
             title: title.to_string(),
             message: message.to_string(),
             icon_path: icon_path.to_string_lossy().to_string(),
             action_uri: None,
-            id,
+            id: id.to_string(),
         }
     }
 

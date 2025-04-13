@@ -1,75 +1,98 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-    <general>
-        <debug>false</debug>
-    </general>
-    <database>
-        <path>%PROGRAMDATA%\RebootReminder\reboot_reminder.db</path>
-    </database>
-    <logging>
-        <level>info</level>
-        <path>%PROGRAMDATA%\RebootReminder\logs\reboot_reminder.log</path>
-        <maxSize>10485760</maxSize>
-        <maxFiles>5</maxFiles>
-    </logging>
-    <reboot>
-        <checkIntervalSeconds>300</checkIntervalSeconds>
-        <maxPendingRebootAgeHours>72</maxPendingRebootAgeHours>
-        <checkWindowsUpdates>true</checkWindowsUpdates>
-        <checkPendingFileRenames>true</checkPendingFileRenames>
-        <checkComponentBasedServicing>true</checkComponentBasedServicing>
-        <checkSccmClient>true</checkSccmClient>
-        <checkDomainController>false</checkDomainController>
-        <timeframes>
-            <timeframe>
-                <minHours>24</minHours>
-                <maxHours>48</maxHours>
-                <reminderInterval>4h</reminderInterval>
-                <deferrals>
-                    <deferral>1h</deferral>
-                    <deferral>4h</deferral>
-                    <deferral>8h</deferral>
-                    <deferral>24h</deferral>
-                </deferrals>
-            </timeframe>
-            <timeframe>
-                <minHours>49</minHours>
-                <maxHours>72</maxHours>
-                <reminderInterval>2h</reminderInterval>
-                <deferrals>
-                    <deferral>1h</deferral>
-                    <deferral>2h</deferral>
-                    <deferral>4h</deferral>
-                </deferrals>
-            </timeframe>
-            <timeframe>
-                <minHours>73</minHours>
-                <reminderInterval>30m</reminderInterval>
-                <deferrals>
-                    <deferral>30m</deferral>
-                    <deferral>1h</deferral>
-                </deferrals>
-            </timeframe>
-        </timeframes>
-    </reboot>
-    <notification>
-        <showToast>true</showToast>
-        <showTray>true</showTray>
-        <showBalloon>false</showBalloon>
-    </notification>
+<config>
+  <service>
+    <n>RebootReminder</n>
+    <displayName>Reboot Reminder Service</displayName>
+    <description>Provides notifications when system reboots are necessary</description>
+    <configRefreshMinutes>60</configRefreshMinutes>
+  </service>
+  <notification>
+    <type>both</type>
     <branding>
-        <title>Reboot Reminder</title>
-        <iconPath>%PROGRAMFILES%\RebootReminder\icon.ico</iconPath>
+      <title>Reboot Reminder</title>
+      <iconPath>%PROGRAMDATA%\RebootReminder\icon.ico</iconPath>
+      <company>IT Department</company>
     </branding>
-    <service>
-        <runAsService>true</runAsService>
-        <name>RebootReminder</name>
-        <displayName>Reboot Reminder Service</displayName>
-        <description>Provides notifications when system reboots are necessary</description>
-    </service>
-    <watchdog>
-        <enabled>true</enabled>
-        <checkIntervalSeconds>300</checkIntervalSeconds>
-        <maxDowntimeSeconds>600</maxDowntimeSeconds>
-    </watchdog>
-</configuration>
+    <messages>
+      <rebootRequired>Your computer requires a reboot to complete recent updates.</rebootRequired>
+      <rebootRecommended>It is recommended to reboot your computer to apply recent updates.</rebootRecommended>
+      <rebootScheduled>Your computer is scheduled to reboot at %s.</rebootScheduled>
+      <rebootInProgress>Your computer will reboot in %s.</rebootInProgress>
+      <rebootCancelled>The scheduled reboot has been cancelled.</rebootCancelled>
+      <rebootPostponed>The reboot has been postponed for %s.</rebootPostponed>
+      <rebootCompleted>Your computer has been successfully rebooted.</rebootCompleted>
+      <actionRequired>Reboot is required. Click to schedule.</actionRequired>
+      <actionRecommended>Reboot is recommended. Click for options.</actionRecommended>
+      <actionNotRequired>No reboot is required at this time.</actionNotRequired>
+      <actionNotAvailable>Reboot options are not available at this time.</actionNotAvailable>
+    </messages>
+    <quietHours>
+      <enabled>true</enabled>
+      <startTime>22:00</startTime>
+      <endTime>08:00</endTime>
+      <daysOfWeek>0</daysOfWeek>
+      <daysOfWeek>1</daysOfWeek>
+      <daysOfWeek>2</daysOfWeek>
+      <daysOfWeek>3</daysOfWeek>
+      <daysOfWeek>4</daysOfWeek>
+      <daysOfWeek>5</daysOfWeek>
+      <daysOfWeek>6</daysOfWeek>
+    </quietHours>
+  </notification>
+  <reboot>
+    <systemReboot>
+      <enabled>true</enabled>
+      <countdownSeconds>30</countdownSeconds>
+      <showConfirmation>true</showConfirmation>
+      <confirmationMessage>The system needs to restart. Do you want to restart now?</confirmationMessage>
+      <confirmationTitle>System Restart Required</confirmationTitle>
+    </systemReboot>
+    <timeframes>
+      <timeframes>
+        <minHours>24</minHours>
+        <maxHours>48</maxHours>
+        <reminderIntervalHours>4</reminderIntervalHours>
+        <deferrals>1h</deferrals>
+        <deferrals>4h</deferrals>
+        <deferrals>8h</deferrals>
+        <deferrals>24h</deferrals>
+      </timeframes>
+      <timeframes>
+        <minHours>49</minHours>
+        <maxHours>72</maxHours>
+        <reminderIntervalHours>2</reminderIntervalHours>
+        <deferrals>1h</deferrals>
+        <deferrals>2h</deferrals>
+        <deferrals>4h</deferrals>
+      </timeframes>
+      <timeframes>
+        <minHours>73</minHours>
+        <reminderIntervalMinutes>30</reminderIntervalMinutes>
+        <deferrals>30m</deferrals>
+        <deferrals>1h</deferrals>
+      </timeframes>
+    </timeframes>
+    <detectionMethods>
+      <windowsUpdate>true</windowsUpdate>
+      <sccm>true</sccm>
+      <registry>true</registry>
+      <pendingFileOperations>true</pendingFileOperations>
+    </detectionMethods>
+  </reboot>
+  <database>
+    <path>%PROGRAMDATA%\RebootReminder\reboot_reminder.db</path>
+  </database>
+  <logging>
+    <path>%PROGRAMDATA%\RebootReminder\logs\reboot_reminder.log</path>
+    <level>info</level>
+    <maxFiles>7</maxFiles>
+    <maxSize>10</maxSize>
+  </logging>
+  <watchdog>
+    <enabled>true</enabled>
+    <checkIntervalSeconds>300</checkIntervalSeconds>
+    <maxRestartAttempts>3</maxRestartAttempts>
+    <restartDelaySeconds>30</restartDelaySeconds>
+    <serviceName>RebootReminder</serviceName>
+  </watchdog>
+</config>

@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RebootState {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// Whether a reboot is required
     pub reboot_required: bool,
@@ -50,7 +50,7 @@ impl RebootState {
     pub fn new(reboot_required: bool, reboot_recommended: bool) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             reboot_required,
             reboot_recommended,
             last_check_time: now,
@@ -71,7 +71,7 @@ impl RebootState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RebootSource {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// Source name
     pub name: String,
@@ -97,7 +97,7 @@ impl RebootSource {
     pub fn new(name: &str, description: Option<&str>, severity: &str) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
             severity: severity.to_string(),
@@ -112,7 +112,7 @@ impl RebootSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RebootHistory {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// Time of reboot
     pub reboot_time: DateTime<Utc>,
@@ -140,7 +140,7 @@ impl RebootHistory {
     /// Create a new reboot history entry
     pub fn new(reboot_time: DateTime<Utc>, success: bool) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             reboot_time,
             reason: None,
             source: None,
@@ -156,7 +156,7 @@ impl RebootHistory {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// Time of notification
     pub timestamp: DateTime<Utc>,
@@ -185,7 +185,7 @@ impl Notification {
     pub fn new(notification_type: &str, message: &str, user_name: Option<&str>) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             timestamp: now,
             notification_type: notification_type.to_string(),
             message: message.to_string(),
@@ -201,10 +201,10 @@ impl Notification {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationInteraction {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// Notification ID
-    pub notification_id: String,
+    pub notification_id: Uuid,
 
     /// Time of interaction
     pub timestamp: DateTime<Utc>,
@@ -224,10 +224,10 @@ pub struct NotificationInteraction {
 
 impl NotificationInteraction {
     /// Create a new notification interaction
-    pub fn new(notification_id: &str, action: &str) -> Self {
+    pub fn new(notification_id: Uuid, action: &str) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
-            notification_id: notification_id.to_string(),
+            id: Uuid::new_v4(),
+            notification_id,
             timestamp: Utc::now(),
             action: action.to_string(),
             user_name: None,
@@ -237,11 +237,11 @@ impl NotificationInteraction {
     }
 
     /// Create a new notification interaction with detailed information
-    pub fn new_detailed(notification_id: &str, action: &str, user_name: Option<&str>,
+    pub fn new_detailed(notification_id: Uuid, action: &str, user_name: Option<&str>,
                         session_id: Option<&str>, details: Option<&str>) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
-            notification_id: notification_id.to_string(),
+            id: Uuid::new_v4(),
+            notification_id,
             timestamp: Utc::now(),
             action: action.to_string(),
             user_name: user_name.map(|s| s.to_string()),
@@ -273,7 +273,7 @@ impl NotificationInteraction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSession {
     /// Unique identifier
-    pub id: String,
+    pub id: Uuid,
 
     /// User name
     pub user_name: String,
@@ -317,7 +317,7 @@ impl UserSession {
     pub fn new(user_name: &str, session_id: &str, is_rdp: bool, is_console: bool) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             user_name: user_name.to_string(),
             session_id: session_id.to_string(),
             logon_time: now,

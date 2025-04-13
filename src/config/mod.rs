@@ -101,6 +101,9 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Config> {
     // Expand environment variables in paths
     expand_env_vars_in_config(&mut config).context("Failed to expand environment variables in configuration")?;
 
+    // Log all configuration values
+    log_config_details(&config);
+
     // Log the expanded configuration paths
     info!("Expanded configuration paths:");
     info!("  Database path: {}", config.database.path);
@@ -244,6 +247,12 @@ fn format_config_summary(config: &Config) -> String {
     // Timeframes info
     summary.push_str(&format!("Timeframes: {}, ", config.reboot.timeframes.len()));
 
+    // Database info
+    summary.push_str(&format!("Database: {}, ", config.database.path));
+
+    // Logging info
+    summary.push_str(&format!("Logging: {}, ", config.logging.path));
+
     // First timeframe info
     if let Some(first_timeframe) = config.reboot.timeframes.first() {
         summary.push_str(&format!("First timeframe: {}h-", first_timeframe.min_hours));
@@ -279,6 +288,107 @@ fn format_config_summary(config: &Config) -> String {
     }
 
     summary
+}
+
+/// Log all configuration details
+fn log_config_details(config: &Config) {
+    // Service configuration
+    info!("Service Configuration:");
+    info!("  Name: {}", config.service.name);
+    info!("  Display Name: {}", config.service.display_name);
+    info!("  Description: {}", config.service.description);
+    info!("  Config Refresh Minutes: {}", config.service.config_refresh_minutes);
+
+    // Notification configuration
+    info!("Notification Configuration:");
+    info!("  Type: {:?}", config.notification.notification_type);
+
+    // Branding
+    info!("  Branding:");
+    info!("    Title: {}", config.notification.branding.title);
+    info!("    Icon Path: {}", config.notification.branding.icon_path);
+    info!("    Company: {}", config.notification.branding.company);
+
+    // Messages
+    info!("  Messages:");
+    info!("    Reboot Required: {}", config.notification.messages.reboot_required);
+    info!("    Reboot Recommended: {}", config.notification.messages.reboot_recommended);
+    info!("    Reboot Scheduled: {}", config.notification.messages.reboot_scheduled);
+    info!("    Reboot In Progress: {}", config.notification.messages.reboot_in_progress);
+    info!("    Reboot Cancelled: {}", config.notification.messages.reboot_cancelled);
+    info!("    Reboot Postponed: {}", config.notification.messages.reboot_postponed);
+    info!("    Reboot Completed: {}", config.notification.messages.reboot_completed);
+    info!("    Action Required: {}", config.notification.messages.action_required);
+    info!("    Action Recommended: {}", config.notification.messages.action_recommended);
+    info!("    Action Not Required: {}", config.notification.messages.action_not_required);
+    info!("    Action Not Available: {}", config.notification.messages.action_not_available);
+
+    // Quiet Hours
+    info!("  Quiet Hours:");
+    info!("    Enabled: {}", config.notification.quiet_hours.enabled);
+    info!("    Start Time: {}", config.notification.quiet_hours.start_time);
+    info!("    End Time: {}", config.notification.quiet_hours.end_time);
+    info!("    Days of Week: {:?}", config.notification.quiet_hours.days_of_week);
+
+    // Reboot configuration
+    info!("Reboot Configuration:");
+
+    // Timeframes
+    info!("  Timeframes: {} defined", config.reboot.timeframes.len());
+    for (i, timeframe) in config.reboot.timeframes.iter().enumerate() {
+        info!("  Timeframe #{}:", i + 1);
+        info!("    Min Hours: {}", timeframe.min_hours);
+        if let Some(max_hours) = timeframe.max_hours {
+            info!("    Max Hours: {}", max_hours);
+        } else {
+            info!("    Max Hours: None (unlimited)");
+        }
+
+        if let Some(interval) = &timeframe.reminder_interval {
+            info!("    Reminder Interval: {}", interval);
+        } else if let Some(hours) = timeframe.reminder_interval_hours {
+            info!("    Reminder Interval Hours: {}", hours);
+        } else if let Some(minutes) = timeframe.reminder_interval_minutes {
+            info!("    Reminder Interval Minutes: {}", minutes);
+        }
+
+        info!("    Deferrals: {:?}", timeframe.deferrals);
+    }
+
+    // Detection Methods
+    info!("  Detection Methods:");
+    info!("    Windows Update: {}", config.reboot.detection_methods.windows_update);
+    info!("    SCCM: {}", config.reboot.detection_methods.sccm);
+    info!("    Registry: {}", config.reboot.detection_methods.registry);
+    info!("    Pending File Operations: {}", config.reboot.detection_methods.pending_file_operations);
+
+    // System Reboot
+    info!("  System Reboot:");
+    info!("    Enabled: {}", config.reboot.system_reboot.enabled);
+    info!("    Countdown Seconds: {}", config.reboot.system_reboot.countdown_seconds);
+    info!("    Show Confirmation: {}", config.reboot.system_reboot.show_confirmation);
+    info!("    Confirmation Message: {}", config.reboot.system_reboot.confirmation_message);
+    info!("    Confirmation Title: {}", config.reboot.system_reboot.confirmation_title);
+
+    // Database configuration
+    info!("Database Configuration:");
+    info!("  Path: {}", config.database.path);
+
+    // Logging configuration
+    info!("Logging Configuration:");
+    info!("  Path: {}", config.logging.path);
+    info!("  Level: {}", config.logging.level);
+    info!("  Max Files: {}", config.logging.max_files);
+    info!("  Max Size: {} MB", config.logging.max_size);
+
+    // Watchdog configuration
+    info!("Watchdog Configuration:");
+    info!("  Enabled: {}", config.watchdog.enabled);
+    info!("  Check Interval: {} seconds", config.watchdog.check_interval_seconds);
+    info!("  Max Restart Attempts: {}", config.watchdog.max_restart_attempts);
+    info!("  Restart Delay: {} seconds", config.watchdog.restart_delay_seconds);
+    info!("  Service Path: {}", config.watchdog.service_path);
+    info!("  Service Name: {}", config.watchdog.service_name);
 }
 
 /// Validate configuration

@@ -203,7 +203,7 @@ impl NotificationManager {
     /// Record a notification interaction
     pub fn record_interaction(
         &self,
-        notification_id: &str,
+        notification_id: uuid::Uuid,
         action: &str,
         session: &UserSession,
     ) -> Result<()> {

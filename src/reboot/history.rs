@@ -205,7 +205,7 @@ impl RebootHistoryManager {
 
                 // Create a reboot history entry
                 let history = RebootHistory {
-                    id: Uuid::new_v4().to_string(),
+                    id: Uuid::new_v4(),
                     reboot_time,
                     reason: Some(String::from("System shutdown")),
                     source: Some(String::from("Event Log")),
@@ -265,7 +265,7 @@ impl RebootHistoryManager {
         let history = stmt
             .query_map([limit as i64], |row| {
                 Ok(RebootHistory {
-                    id: row.get(0)?,
+                    id: row.get::<_, crate::database::UuidWrapper>(0)?.into(),
                     reboot_time: row.get::<_, DateTimeUtc>(1)?.into(),
                     reason: row.get(2)?,
                     source: row.get(3)?,
@@ -287,7 +287,7 @@ impl RebootHistoryManager {
             "INSERT INTO reboot_history (id, reboot_time, reason, source, user_name, computer_name, success, duration)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                &history.id,
+                &crate::database::UuidWrapper::from(history.id),
                 &DateTimeUtc::from(history.reboot_time),
                 &history.reason,
                 &history.source,
