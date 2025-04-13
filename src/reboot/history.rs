@@ -72,17 +72,21 @@ impl RebootHistoryManager {
             let context = EvtCreateRenderContext(None, 0)?;
 
             // Get events
-            let mut event_handles = [0isize; 1];
+            let mut event_handles_raw = [0isize; 1];
             let mut returned = 0;
+
+            // Use a safer approach with explicit error handling
             let result = EvtNext(
                 query_handle,
-                &mut event_handles,
+                &mut event_handles_raw,
                 1,
                 0,
                 &mut returned,
             );
+
+            // Convert the raw handle to EVT_HANDLE
             let mut event_handle = if returned > 0 {
-                EVT_HANDLE(event_handles[0])
+                EVT_HANDLE(event_handles_raw[0])
             } else {
                 EVT_HANDLE::default()
             };
@@ -222,16 +226,16 @@ impl RebootHistoryManager {
 
                 // Get the next event
                 let mut returned = 0;
-                let mut event_handles = [0isize; 1];
+                let mut event_handles_raw = [0isize; 1];
                 let result = EvtNext(
                     query_handle,
-                    &mut event_handles,
+                    &mut event_handles_raw,
                     1,
                     0,
                     &mut returned,
                 );
                 if returned > 0 {
-                    event_handle = EVT_HANDLE(event_handles[0]);
+                    event_handle = EVT_HANDLE(event_handles_raw[0]);
                 }
 
                 if let Err(e) = result {

@@ -425,11 +425,38 @@ impl RebootDetector {
         let query = "SELECT OS.Caption, OS.CSName, OS.LastBootUpTime, CS.Domain, CS.Model \
                     FROM Win32_OperatingSystem AS OS, Win32_ComputerSystem AS CS";
 
+        // Try a simpler query first to test the connection
+        let test_query = "SELECT Caption FROM Win32_OperatingSystem";
+        match wmi_con.raw_query::<serde_json::Value>(test_query) {
+            Ok(_) => debug!("WMI connection test successful"),
+            Err(e) => {
+                warn!("WMI connection test failed: {}", e);
+                // Try to reinitialize the COM library
+                let com_lib = match wmi::COMLibrary::new() {
+                    Ok(lib) => lib,
+                    Err(e) => {
+                        warn!("Failed to reinitialize COM library: {}", e);
+                        return Err(anyhow::anyhow!("Failed to reinitialize COM library: {}", e));
+                    }
+                };
+
+                let _wmi_con = match wmi::WMIConnection::new(com_lib.into()) {
+                    Ok(con) => con,
+                    Err(e) => {
+                        warn!("Failed to reconnect to WMI: {}", e);
+                        return Err(anyhow::anyhow!("Failed to reconnect to WMI: {}", e));
+                    }
+                };
+            }
+        }
+
         let results: Vec<SystemInfoWMI> = match wmi_con.raw_query(query) {
             Ok(results) => results,
             Err(e) => {
                 warn!("Failed to query WMI for system information: {}", e);
-                return Err(anyhow::anyhow!("Failed to query WMI for system information: {}", e));
+                // Try a simpler approach with separate queries
+                warn!("Attempting fallback with separate queries");
+                return self.get_system_info_fallback();
             }
         };
 
@@ -559,6 +586,62 @@ impl RebootDetector {
 
         debug!("System information: {:?}", info);
         Ok(info)
+    }
+
+    /// Fallback method to get system information when the optimized query fails
+    fn get_system_info_fallback(&self) -> Result<SystemInfo> {
+        debug!("Using fallback method to get system information");
+
+        // Create a default system info with minimal information
+        let mut info = SystemInfo {
+            computer_name: "Unknown".to_string(),
+            os_version: "Unknown".to_string(),
+            last_boot_time: Utc::now(), // Default to current time
+            uptime: 0,
+            ip_address: None,
+            domain: "Unknown".to_string(),
+            is_virtual_machine: false,
+            sccm_client_installed: false,
+            sccm_client_version: None,
+        };
+
+        // Try to get computer name using environment variable
+        if let Ok(computer_name) = std::env::var("COMPUTERNAME") {
+            info.computer_name = computer_name;
+        }
+
+        // Try to get last boot time using a different method
+        match self.get_last_boot_time_fallback() {
+            Ok(boot_time) => {
+                info.last_boot_time = boot_time;
+                let now = Utc::now();
+                info.uptime = now.signed_duration_since(boot_time).num_seconds();
+            },
+            Err(e) => {
+                warn!("Failed to get last boot time using fallback method: {}", e);
+            }
+        }
+
+        debug!("Fallback system information: {:?}", info);
+        Ok(info)
+    }
+
+    /// Fallback method to get last boot time
+    fn get_last_boot_time_fallback(&self) -> Result<DateTime<Utc>> {
+        debug!("Getting last boot time using fallback method");
+
+        // Try using GetTickCount64 to estimate boot time
+        unsafe {
+            use windows::Win32::System::SystemInformation::GetTickCount64;
+
+            let tick_count = GetTickCount64();
+            let now = Utc::now();
+            let duration = chrono::Duration::milliseconds(tick_count as i64);
+            let boot_time = now - duration;
+
+            debug!("Estimated last boot time: {}", boot_time);
+            Ok(boot_time)
+        }
     }
 }
 

@@ -729,6 +729,16 @@ fn run_service() -> Result<()> {
                 debug!("Service interrogate requested");
                 ServiceControlHandlerResult::NoError
             },
+            ServiceControl::PowerEvent(event_type) => {
+                debug!("Power event received: {:?}", event_type);
+                // Handle power events like sleep/resume
+                ServiceControlHandlerResult::NoError
+            },
+            ServiceControl::SessionChange(session_change) => {
+                debug!("Session change event received: {:?}", session_change);
+                // Handle session changes like user logon/logoff
+                ServiceControlHandlerResult::NoError
+            },
             _ => {
                 debug!("Unhandled service control event: {:?}", control_event);
                 ServiceControlHandlerResult::NotImplemented
