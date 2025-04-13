@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2025.04.12-2300] - 2025-04-12
+
+### Fixed
+- Fixed service installation to use LocalSystem account without password
+- Added automatic restart recovery options for the service
+- Updated documentation to reflect service installation changes
+
 ## [v2025.04.12-2130] - 2025-04-12
 
 ### Added
